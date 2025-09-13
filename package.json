@@ -1,0 +1,9 @@
+{
+  "name": "zolarus-proxy",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "aws4": "^1.12.0",
+    "node-fetch": "^2.6.9"
+  }
+}
