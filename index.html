@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Zolarus Amazon Search</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; }
+    label { display:block; margin-top: .5rem; }
+    input { padding:.4rem; width: 240px; }
+    button { margin-top: .8rem; padding:.5rem .9rem; cursor:pointer; }
+    pre { background:#111; color:#0f0; padding:1rem; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Amazon Search (via Netlify function)</h1>
+
+  <label>Keywords
+    <input id="keywords" value="headphones" />
+  </label>
+  <label>Min Price (USD)
+    <input id="minPrice" type="number" value="20" />
+  </label>
+  <label>Max Price (USD)
+    <input id="maxPrice" type="number" value="50" />
+  </label>
+  <button id="go">Search</button>
+
+  <h2>Results</h2>
+  <pre id="out">—</pre>
+
+  <script>
+    const out = document.getElementById('out');
+    document.getElementById('go').addEventListener('click', async () => {
+      out.textContent = 'Searching…';
+      try {
+        const body = {
+          keywords:  document.getElementById('keywords').value,
+          minPrice:  parseInt(document.getElementById('minPrice').value || '0', 10),
+          maxPrice:  parseInt(document.getElementById('maxPrice').value || '0', 10),
+          likes:     ["tech"],
+          dislikes:  ["fragrance"],
+          deadlineDays: 3
+        };
+
+        // Because this page is hosted on the SAME Netlify site,
+        // the relative path below will work and avoid CORS headaches.
+        const res = await fetch('/.netlify/functions/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        const data = await res.json();
+        out.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        out.textContent = 'Error: ' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
