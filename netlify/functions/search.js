@@ -6,7 +6,7 @@ const fetch = require("node-fetch");
 
 const HOST = "webservices.amazon.com";
 const REGION = process.env.AMAZON_REGION || "us-east-1";
-const PARTNER_TAG = process.env.AMAZON_PARTNER_TAG; // e.g., "mateussousa-20"
+const PARTNER_TAG = process.env.AMAZON_PARTNER_TAG; 
 
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
