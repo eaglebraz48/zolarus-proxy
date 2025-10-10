@@ -7,7 +7,6 @@ import { Resend } from "resend";
 // - SUPABASE_SERVICE_ROLE_KEY
 // - RESEND_API_KEY
 // - RESEND_FROM          e.g.  Zolarus <noreply@arison8.com>
-// - APP_BASE_URL         e.g.  https://zolarus.arison8.com   (optional; we’ll also try Netlify’s URL/DEPLOY_URL)
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
