@@ -1,3 +1,6 @@
-[build]
-  publish = "."
-  functions = "netlify/functions"
+[functions]
+node_bundler = "esbuild"
+
+[[scheduled]]
+path = "/.netlify/functions/reminders-check"
+schedule = "*/5 * * * *"   # every 5 minutes
