@@ -6,7 +6,7 @@ import { Resend } from "resend";
 // - SUPABASE_URL
 // - SUPABASE_SERVICE_ROLE_KEY
 // - RESEND_API_KEY
-// - RESEND_FROM          e.g.  Zolarus <noreply@arison8.com>
+
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
