@@ -5,121 +5,118 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export async function handler(event, context) {
-  console.log('[reminders-check] Function invoked');
+export async function handler() {
+  const nowISO = new Date().toISOString();
+
+  // Quick env sanity in the response (no secrets)
+  const envCheck = {
+    has_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    has_SERVICE_ROLE: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    has_RESEND_KEY: !!process.env.RESEND_API_KEY,
+    time: nowISO
+  };
 
   try {
-    // Get current time
-    const now = new Date();
-    const nowISO = now.toISOString();
-    console.log(`[reminders-check] Current time: ${nowISO}`);
-
-    // Query reminders that are due (remind_at <= now) and not yet sent
     const { data: dueReminders, error: queryError } = await supabase
       .from('reminders')
-      .select('id, user_id, title, remind_at, email')
+      .select('id, title, remind_at, email')
       .lte('remind_at', nowISO)
       .is('sent_at', null);
 
     if (queryError) {
-      console.error('[reminders-check] Query error:', queryError);
-      return {
-        statusCode: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          processed: 0,
-          sent: 0,
-          error: queryError.message,
-        }),
-      };
+      return resp(500, {
+        ...envCheck,
+        stage: 'query',
+        error: queryError.message
+      });
     }
 
-    console.log(`[reminders-check] Found ${dueReminders?.length || 0} due reminders`);
-
-    if (!dueReminders || dueReminders.length === 0) {
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          processed: 0,
-          sent: 0,
-          message: 'No reminders due at this time',
-        }),
-      };
-    }
-
+    const details = [];
     let sentCount = 0;
 
-    // Process each reminder
-    for (const reminder of dueReminders) {
+    for (const r of dueReminders ?? []) {
+      const item = {
+        id: r.id,
+        email: r.email || null,
+        title: r.title || null,
+        remind_at: r.remind_at
+      };
+
+      if (!r.email) {
+        item.skip = 'no email';
+        details.push(item);
+        continue;
+      }
+
       try {
-        console.log(`[reminders-check] Processing reminder: ${reminder.id}`);
-
-        if (!reminder.email) {
-          console.warn(`[reminders-check] Reminder ${reminder.id} has no email, skipping`);
-          continue;
-        }
-
-        // Send email via Resend
-        const emailResult = await resend.emails.send({
+        // Use a guaranteed-verified sender to remove DNS as a variable
+        const send = await resend.emails.send({
           from: 'Zolarus Reminders <onboarding@resend.dev>',
-          to: reminder.email,
-          subject: `Reminder: ${reminder.title}`,
-          html: `
-            <h2>Reminder: ${reminder.title}</h2>
-            <p>This is your reminder for: <strong>${reminder.title}</strong></p>
-            <p>Scheduled date/time: ${new Date(reminder.remind_at).toLocaleString()}</p>
-            <hr />
-            <p><small>From Zolarus Reminders</small></p>
-          `,
+          to: r.email,
+          subject: `Reminder: ${r.title ?? '(no title)'}`,
+          html: `<h2>${r.title ?? 'Reminder'}</h2><p>Scheduled: ${new Date(r.remind_at).toISOString()}</p>`
         });
+        item.resend_ok = true;
+        item.resend_response = summarizeResend(send);
+      } catch (e) {
+        item.resend_ok = false;
+        item.resend_error = String(e);
+      }
 
-        console.log(
-          `[reminders-check] Email sent to ${reminder.email} for reminder ${reminder.id}:`,
-          emailResult
-        );
-
-        // Mark reminder as sent
-        const { error: updateError } = await supabase
+      // Only mark as sent if Resend step said ok
+      if (item.resend_ok) {
+        const { error: updErr } = await supabase
           .from('reminders')
           .update({ sent_at: new Date().toISOString() })
-          .eq('id', reminder.id);
+          .eq('id', r.id);
 
-        if (updateError) {
-          console.error(
-            `[reminders-check] Failed to mark reminder ${reminder.id} as sent:`,
-            updateError
-          );
+        if (updErr) {
+          item.update_ok = false;
+          item.update_error = updErr.message;
         } else {
-          console.log(`[reminders-check] Marked reminder ${reminder.id} as sent`);
+          item.update_ok = true;
           sentCount++;
         }
-      } catch (error) {
-        console.error(`[reminders-check] Error processing reminder ${reminder.id}:`, error);
       }
+
+      details.push(item);
     }
 
+    return resp(200, {
+      ...envCheck,
+      processed: dueReminders?.length ?? 0,
+      sent: sentCount,
+      details
+    });
+  } catch (e) {
+    return resp(500, {
+      ...envCheck,
+      stage: 'fatal',
+      error: String(e)
+    });
+  }
+}
+
+function resp(status, body) {
+  return {
+    statusCode: status,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  };
+}
+
+// avoid dumping huge objects
+function summarizeResend(obj) {
+  try {
+    const { data, error } = obj || {};
     return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        processed: dueReminders.length,
-        sent: sentCount,
-      }),
+      data_id: data?.id ?? null,
+      data_to: data?.to ?? null,
+      error: error ? String(error) : null
     };
-  } catch (error) {
-    console.error('[reminders-check] Fatal error:', error);
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        processed: 0,
-        sent: 0,
-        error: error.message,
-      }),
-    };
+  } catch {
+    return { raw: 'unserializable resend response' };
   }
 }
