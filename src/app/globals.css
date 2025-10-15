@@ -1,0 +1,19 @@
+/* src/app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Small polish */
+:root {
+  --z-violet: 110 40 217; /* #6d28d9 */
+}
+
+.btn-primary {
+  @apply inline-flex items-center gap-2 rounded-full bg-violet-600 px-4 py-2 text-white font-semibold hover:bg-violet-700 transition;
+}
+.card {
+  @apply rounded-2xl border shadow-sm p-5 bg-white;
+}
+.link {
+  @apply text-violet-700 hover:underline;
+}
