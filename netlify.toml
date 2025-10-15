@@ -7,15 +7,10 @@ ignore = "git diff --quiet HEAD^ HEAD -- ./src /functions"
 directory = "netlify/functions"
 node_bundler = "esbuild"
 
-[[functions]]
-name = "reminders-check"
+# schedule reminders-check every 5 minutes
+[[scheduled]]
+path = "/.netlify/functions/reminders-check"
 schedule = "*/5 * * * *"
-
-[[functions]]
-name = "resend-self-test"
-
-[[functions]]
-name = "resend-smoke"
 
 [[redirects]]
 from = "/api/*"
