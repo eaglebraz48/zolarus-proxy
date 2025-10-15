@@ -65,7 +65,7 @@ export async function handler(event, context) {
 
         // Send email via Resend
         const emailResult = await resend.emails.send({
-          from: 'Zolarus Reminders <reminders@zolarus.com>',
+          from: 'Zolarus Reminders <onboarding@resend.dev>',
           to: reminder.email,
           subject: `Reminder: ${reminder.title}`,
           html: `
