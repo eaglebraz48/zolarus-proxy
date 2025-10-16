@@ -1,12 +1,11 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  experimental: { serverActions: true },
+import type { NextConfig } from 'next';
 
-  // Let Netlify build finish even if ESLint finds issues
+const nextConfig: NextConfig = {
+  experimental: {
+    serverActions: {},   // <- object, not true
+  },
   eslint: { ignoreDuringBuilds: true },
-
-  // (Optional) same idea for TypeScript build errors
-  // typescript: { ignoreBuildErrors: true },
+  // typescript: { ignoreBuildErrors: true }, // leave commented unless you need it
 };
 
 export default nextConfig;
