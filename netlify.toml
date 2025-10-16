@@ -1,18 +1,18 @@
 [build]
 command = "npm run build"
-publish = "dist"
-ignore = "git diff --quiet HEAD^ HEAD -- ./src /functions"
+publish = ".next"
+
+# Use the official Next.js plugin
+[[plugins]]
+package = "@netlify/plugin-nextjs"
 
 [functions]
 directory = "netlify/functions"
 node_bundler = "esbuild"
 
-# schedule reminders-check every 5 minutes
+# Scheduled function every 5 minutes
 [[scheduled]]
 path = "/.netlify/functions/reminders-check"
 schedule = "*/5 * * * *"
 
-[[redirects]]
-from = "/api/*"
-to = "/.netlify/functions/:splat"
-status = 200
+# ⚠️ Remove any /api/* redirect — the Next plugin handles Next routes.
