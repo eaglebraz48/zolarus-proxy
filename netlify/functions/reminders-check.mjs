@@ -1,3 +1,4 @@
+// netlify/functions/reminders-check.mjs
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
@@ -5,12 +6,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export async function handler() {
+export default async (req, context) => {
   const nowISO = new Date().toISOString();
-
-  // Quick env sanity in the response (no secrets)
+  
   const envCheck = {
     has_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
     has_SERVICE_ROLE: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -26,11 +27,19 @@ export async function handler() {
       .is('sent_at', null);
 
     if (queryError) {
-      return resp(500, {
-        ...envCheck,
-        stage: 'query',
-        error: queryError.message
-      });
+      return new Response(
+        JSON.stringify({
+          ...envCheck,
+          stage: 'query',
+          error: queryError.message,
+          processed: 0,
+          sent: 0
+        }),
+        { 
+          status: 500, 
+          headers: { 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     const details = [];
@@ -51,7 +60,6 @@ export async function handler() {
       }
 
       try {
-        // Use a guaranteed-verified sender to remove DNS as a variable
         const send = await resend.emails.send({
           from: 'Zolarus Reminders <onboarding@resend.dev>',
           to: r.email,
@@ -65,13 +73,11 @@ export async function handler() {
         item.resend_error = String(e);
       }
 
-      // Only mark as sent if Resend step said ok
       if (item.resend_ok) {
         const { error: updErr } = await supabase
           .from('reminders')
           .update({ sent_at: new Date().toISOString() })
           .eq('id', r.id);
-
         if (updErr) {
           item.update_ok = false;
           item.update_error = updErr.message;
@@ -80,34 +86,38 @@ export async function handler() {
           sentCount++;
         }
       }
-
       details.push(item);
     }
 
-    return resp(200, {
-      ...envCheck,
-      processed: dueReminders?.length ?? 0,
-      sent: sentCount,
-      details
-    });
+    return new Response(
+      JSON.stringify({
+        ...envCheck,
+        processed: dueReminders?.length ?? 0,
+        sent: sentCount,
+        details
+      }),
+      { 
+        status: 200, 
+        headers: { 'Content-Type': 'application/json' } 
+      }
+    );
   } catch (e) {
-    return resp(500, {
-      ...envCheck,
-      stage: 'fatal',
-      error: String(e)
-    });
+    return new Response(
+      JSON.stringify({
+        ...envCheck,
+        stage: 'fatal',
+        error: String(e),
+        processed: 0,
+        sent: 0
+      }),
+      { 
+        status: 500, 
+        headers: { 'Content-Type': 'application/json' } 
+      }
+    );
   }
-}
+};
 
-function resp(status, body) {
-  return {
-    statusCode: status,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  };
-}
-
-// avoid dumping huge objects
 function summarizeResend(obj) {
   try {
     const { data, error } = obj || {};
