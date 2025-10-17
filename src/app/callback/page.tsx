@@ -1,16 +1,24 @@
+// src/app/callback/page.tsx
 'use client';
 
-export const dynamic = 'force-dynamic'; // don’t prerender this page
+export const dynamic = 'force-dynamic'; // avoid prerendering
 
-import { useEffect, useRef } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 export default function CallbackPage() {
+  // ✅ wrap the content in Suspense to satisfy Next 15
+  return (
+    <Suspense fallback={<main style={{ padding: '2rem', textAlign: 'center' }}>Signing you in…</main>}>
+      <CallbackContent />
+    </Suspense>
+  );
+}
+
+function CallbackContent() {
   const router = useRouter();
   const sp = useSearchParams();
-
-  // Read query params safely
   const code = sp.get('code');
   const lang = (sp.get('lang') ?? 'en').toLowerCase();
   const redirect = sp.get('redirect') ?? '/dashboard';
@@ -21,7 +29,7 @@ export default function CallbackPage() {
 
     async function handleCallback() {
       try {
-        // 1) Exchange OAuth code for session
+        // 1) If OAuth code is present, exchange it for a session
         if (code) {
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) {
@@ -42,12 +50,12 @@ export default function CallbackPage() {
         const email = data.session.user.email;
         const userId = data.session.user.id;
 
-        // 3) Trigger welcome email route only once per user (per browser)
+        // 3) Trigger your welcome email once
         if (!sentRef.current && !cancelled) {
           sentRef.current = true;
 
           const flagKey = `welcome:${userId}`;
-          if (typeof window !== 'undefined' && !localStorage.getItem(flagKey)) {
+          if (!localStorage.getItem(flagKey)) {
             localStorage.setItem(flagKey, String(Date.now()));
 
             try {
@@ -68,7 +76,7 @@ export default function CallbackPage() {
           }
         }
 
-        // 4) Redirect to app
+        // 4) Redirect into the app
         router.replace(`${redirect}?lang=${lang}`);
       } catch (e) {
         console.error('Callback error', e);
@@ -82,9 +90,5 @@ export default function CallbackPage() {
     };
   }, [code, router, lang, redirect]);
 
-  return (
-    <main style={{ padding: '2rem', textAlign: 'center' }}>
-      <p>Signing you in…</p>
-    </main>
-  );
+  return null; // UI handled by Suspense fallback while we redirect
 }
