@@ -4,3 +4,8 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# ✅ Run reminder emails automatically every 2 minutes
+[[scheduled.functions]]
+  path = "reminders-cron"
+  schedule = "*/2 * * * *"
