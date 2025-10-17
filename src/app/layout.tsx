@@ -6,9 +6,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
-
-// REMOVED: export const dynamic = 'force-dynamic'; 
-// Cannot use with 'use client' - causes build error
+import ChatWidget from '@/components/ChatWidget'; // ← added
 
 type Lang = 'en' | 'pt' | 'es' | 'fr';
 
@@ -20,6 +18,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <Header />
         </Suspense>
         {children}
+        <ChatWidget /> {/* ← added, renders on every page */}
       </body>
     </html>
   );
