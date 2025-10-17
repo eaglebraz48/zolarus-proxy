@@ -1,8 +1,9 @@
 // src/lib/amazon.ts
 export type Lang = "en" | "pt" | "es" | "fr";
 
-// ✅ Add this line:
-const partnerTag = process.env.NEXT_PUBLIC_AMAZON_PARTNER_TAG || "mateussousa-20";
+// Public, on-purpose affiliate tag (safe to expose)
+const partnerTag =
+  process.env.NEXT_PUBLIC_AMAZON_PARTNER_TAG || "mateussousa-20";
 
 /** Keep everything on amazon.com for now (can map later by region) */
 export function domainForLang(_lang: Lang, fallback = "amazon.com") {
@@ -17,9 +18,10 @@ export function buildAffiliateSearchUrl(opts: {
 }) {
   const { q, lang, defaultDomain } = opts;
   const domain = domainForLang(lang, defaultDomain || "amazon.com");
-  const params = new URLSearchParams();
-  params.set("k", q);
-  params.set("tag", partnerTag);
- return `https://${domain}/s?k=${q}&tag=${partnerTag}`;
 
+  const params = new URLSearchParams();
+  params.set("k", q);               // search query
+  params.set("tag", partnerTag);    // affiliate tag
+
+  return `https://${domain}/s?${params.toString()}`;
 }
