@@ -1,4 +1,3 @@
-// src/app/callback/page.tsx
 'use client';
 
 export const dynamic = 'force-dynamic'; // don’t prerender this page
@@ -10,6 +9,8 @@ import { supabase } from '@/lib/supabase';
 export default function CallbackPage() {
   const router = useRouter();
   const sp = useSearchParams();
+
+  // Read query params safely
   const code = sp.get('code');
   const lang = (sp.get('lang') ?? 'en').toLowerCase();
   const redirect = sp.get('redirect') ?? '/dashboard';
@@ -20,7 +21,7 @@ export default function CallbackPage() {
 
     async function handleCallback() {
       try {
-        // 1) If we arrived with an OAuth code, exchange it for a session
+        // 1) Exchange OAuth code for session
         if (code) {
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) {
@@ -41,12 +42,12 @@ export default function CallbackPage() {
         const email = data.session.user.email;
         const userId = data.session.user.id;
 
-        // 3) Trigger your existing welcome email route once
+        // 3) Trigger welcome email route only once per user (per browser)
         if (!sentRef.current && !cancelled) {
           sentRef.current = true;
 
           const flagKey = `welcome:${userId}`;
-          if (!localStorage.getItem(flagKey)) {
+          if (typeof window !== 'undefined' && !localStorage.getItem(flagKey)) {
             localStorage.setItem(flagKey, String(Date.now()));
 
             try {
@@ -67,7 +68,7 @@ export default function CallbackPage() {
           }
         }
 
-        // 4) Go to app
+        // 4) Redirect to app
         router.replace(`${redirect}?lang=${lang}`);
       } catch (e) {
         console.error('Callback error', e);
