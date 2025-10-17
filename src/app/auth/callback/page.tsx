@@ -1,4 +1,3 @@
-// src/app/auth/callback/page.tsx
 'use client';
 
 import * as React from 'react';
@@ -18,43 +17,36 @@ function AuthCallbackContent() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const lang = (sp.get('lang') ?? 'en').toLowerCase();
+  const lang = sp.get('lang') ?? 'en';
   const redirect = sp.get('redirect') ?? '/dashboard';
 
-  // prevent duplicate sends during re-renders/navigation
   const sentRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function handleAuth() {
-      // More reliable than getUser() immediately after magic link
-      const { data, error } = await supabase.auth.getSession();
+      const { data: { user }, error } = await supabase.auth.getUser();
       if (cancelled) return;
 
-      const email = data?.session?.user?.email ?? null;
-
-      if (error || !email) {
-        console.error('Auth callback: no session/email', error);
-        // your login page path is /sign-in (not /signin)
-        router.replace(`/sign-in?lang=${lang}`);
+      if (error || !user?.email) {
+        console.error('Auth callback: could not resolve user', error);
+        router.replace(`/signin?lang=${lang}`);
         return;
       }
 
-      // send welcome once per browser per user
       if (!sentRef.current) {
         sentRef.current = true;
+
         try {
-          const userId = data.session.user.id;
-          const flagKey = `welcome:${userId}`;
+          const flagKey = `welcome:${user.id}`;
           if (!localStorage.getItem(flagKey)) {
             localStorage.setItem(flagKey, String(Date.now()));
 
-            // your working route expects { to | email, lang }
-            const res = await fetch('/api/email/welcome', {
+            const res = await fetch('/api/send-welcome', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ to: email, lang }),
+              body: JSON.stringify({ email: user.email, lang }),
             });
 
             if (!res.ok) {
@@ -71,16 +63,6 @@ function AuthCallbackContent() {
 
       router.replace(`${redirect}?lang=${lang}`);
     }
-
-    handleAuth();
-    return () => {
-      cancelled = true;
-    };
-  }, [router, lang, redirect]);
-
-  return <main className="p-6">Finalizing your sign-in…</main>;
-}
-
 
     handleAuth();
     return () => { cancelled = true; };
