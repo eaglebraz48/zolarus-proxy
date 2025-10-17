@@ -1,76 +1,57 @@
 'use client';
 
-import * as React from 'react';
-import { Suspense, useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-export default function AuthCallbackPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <AuthCallbackContent />
-    </Suspense>
-  );
-}
-
-function AuthCallbackContent() {
+export default function CallbackPage() {
   const router = useRouter();
-  const sp = useSearchParams();
-
-  const lang = sp.get('lang') ?? 'en';
-  const redirect = sp.get('redirect') ?? '/dashboard';
-
-  const sentRef = useRef(false);
+  const searchParams = useSearchParams();
+  const code = searchParams.get('code');
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function handleAuth() {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (cancelled) return;
-
-      if (error || !user?.email) {
-        console.error('Auth callback: could not resolve user', error);
-        router.replace(`/signin?lang=${lang}`);
-        return;
-      }
-
-      if (!sentRef.current) {
-        sentRef.current = true;
-
-        try {
-          const flagKey = `welcome:${user.id}`;
-          if (!localStorage.getItem(flagKey)) {
-            localStorage.setItem(flagKey, String(Date.now()));
-
-            const res = await fetch('/api/send-welcome', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: user.email, lang }),
-            });
-
-            if (!res.ok) {
-              const body = await res.json().catch(() => ({}));
-              console.error('Welcome email API failed', { status: res.status, body });
-            } else {
-              console.log('✅ Welcome email triggered');
-            }
-          }
-        } catch (e) {
-          console.error('Failed to trigger welcome email', e);
-        }
-      }
-
-      router.replace(`${redirect}?lang=${lang}`);
+    if (!code) {
+      router.push('/');
+      return;
     }
 
-    handleAuth();
-    return () => { cancelled = true; };
-  }, [router, lang, redirect]);
+    const handleCallback = async () => {
+      try {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) {
+          console.error('Auth error:', error);
+          router.push('/');
+          return;
+        }
+
+        const { data } = await supabase.auth.getUser();
+        const email = data.user?.email;
+
+        if (email) {
+          try {
+            await fetch('/api/auth/send-welcome-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email }),
+            });
+          } catch (err) {
+            console.error('Welcome email error:', err);
+          }
+        }
+
+        router.push('/dashboard?lang=en');
+      } catch (error) {
+        console.error('Callback error:', error);
+        router.push('/');
+      }
+    };
+
+    handleCallback();
+  }, [code, router]);
 
   return (
-    <div style={{ padding: 24, textAlign: 'center' }}>
-      Finalizing login…
+    <div style={{ padding: '2rem', textAlign: 'center' }}>
+      <p>Signing you in...</p>
     </div>
   );
 }
