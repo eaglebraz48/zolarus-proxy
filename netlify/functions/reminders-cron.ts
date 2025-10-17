@@ -1,56 +1,49 @@
-import { Resend } from "resend";
-import { createClient } from "@supabase/supabase-js";
+// Netlify Scheduled Function: calls the checker with an absolute URL
+import type { Handler } from "@netlify/functions";
 
-// --- env required (already in your Netlify env list) ---
-// RESEND_API_KEY, RESEND_FROM, (optional) RESEND_REPLY_TO
-// SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+const SITE =
+  (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_BASE_URL || "").replace(
+    /\/+$/,
+    ""
+  );
 
-const resend = new Resend(process.env.RESEND_API_KEY!);
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-export const handler = async () => {
-  const now = new Date();
-  const windowMs = 2 * 60 * 1000; // +/- 2 minutes
-  const floor = new Date(now.getTime() - windowMs).toISOString();
-  const ceil  = new Date(now.getTime() + windowMs).toISOString();
-
-  // Adjust table/columns if yours differ:
-  // id, user_id, email, subject, body, send_at (timestamptz), sent (bool), sent_at (timestamptz)
-  const { data: reminders, error } = await supabase
-    .from("reminders")
-    .select("id, email, subject, body, send_at")
-    .eq("sent", false)
-    .gte("send_at", floor)
-    .lte("send_at", ceil)
-    .limit(50);
-
-  if (error) {
-    console.error("fetch reminders error:", error);
-    return { statusCode: 500, body: "fetch error" };
+export const handler: Handler = async () => {
+  if (!SITE || !/^https?:\/\//i.test(SITE)) {
+    return {
+      statusCode: 500,
+      body: "Missing or invalid NEXT_PUBLIC_SITE_URL / APP_BASE_URL",
+    };
   }
 
-  for (const r of reminders ?? []) {
-    try {
-      await resend.emails.send({
-        from: process.env.RESEND_FROM!,
-        to: r.email,
-        reply_to: process.env.RESEND_REPLY_TO || undefined,
-        subject: r.subject || "Reminder",
-        html: `<p>${r.body || "You asked to be reminded."}</p>
-               <p><small>Scheduled: ${new Date(r.send_at).toLocaleString()}</small></p>`
-      });
+  const url = `${SITE}/.netlify/functions/reminders-check`;
 
-      await supabase
-        .from("reminders")
-        .update({ sent: true, sent_at: new Date().toISOString() })
-        .eq("id", r.id);
-    } catch (e) {
-      console.error("send/update failed:", r.id, e);
-    }
+  try {
+    // Abort after 25s so the function doesn’t hang
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 25_000);
+
+    const res = await fetch(url, {
+      method: "POST", // use POST so CDNs/proxies don’t cache it
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+        "User-Agent": "reminders-cron/1.0",
+      },
+      body: JSON.stringify({ source: "cron" }),
+      signal: ac.signal,
+    });
+
+    clearTimeout(t);
+
+    const text = await res.text();
+    return {
+      statusCode: res.ok ? 200 : res.status,
+      body: text || "ok",
+    };
+  } catch (err: any) {
+    return {
+      statusCode: 502,
+      body: `fetch error: ${err?.message || String(err)}`,
+    };
   }
-
-  return { statusCode: 200, body: JSON.stringify({ processed: reminders?.length ?? 0 }) };
 };
