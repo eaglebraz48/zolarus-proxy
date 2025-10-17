@@ -2,10 +2,18 @@
   command = "npm run build"
   publish = ".next"
 
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# ✅ Run reminder emails automatically every 2 minutes
-[[scheduled.functions]]
-  path = "reminders-cron"
-  schedule = "*/2 * * * *"
+# --- Scheduled Functions (UTC) ---
+[[scheduled]]
+  path = "/.netlify/functions/reminders-cron"
+  schedule = "*/5 * * * *"   # every 5 minutes
+
+[[scheduled]]
+  path = "/.netlify/functions/reminders-check"
+  schedule = "*/5 * * * *"   # every 5 minutes
