@@ -5,11 +5,10 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# Run your scheduler every 5 minutes by function name (no extension needed)
 [[scheduled.functions]]
   function = "reminders-cron"
   cron = "*/5 * * * *"
 
-# Quiet the secret scanner for public keys
+# Ignore specific public keys and Resend variables that trigger false positives
 [build.environment]
-  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_AMAZON_PARTNER_TAG,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_AMAZON_PARTNER_TAG,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,RESEND_FROM,RESEND_REPLY_TO"
