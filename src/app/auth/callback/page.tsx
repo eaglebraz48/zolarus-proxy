@@ -1,66 +1,53 @@
-// src/app/auth/callback/page.tsx
 'use client';
 
-import { useEffect, Suspense } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-function CallbackContent() {
+export default function AuthCallbackPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const code = searchParams.get('code');
+  const sp = useSearchParams();
+  const code = sp.get('code');
+  const lang = (sp.get('lang') ?? 'en').toLowerCase();
+  const redirect = sp.get('redirect') ?? '/dashboard';
+  const sentRef = useRef(false);
 
   useEffect(() => {
-    if (!code) {
-      router.push('/');
-      return;
-    }
+    let cancelled = false;
 
-    const handleCallback = async () => {
+    async function handleCallback() {
       try {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) {
-          console.error('Auth error:', error);
-          router.push('/');
-          return;
-        }
-
-        const { data } = await supabase.auth.getUser();
-        const email = data.user?.email;
-
-        if (email) {
-          try {
-            await fetch('/api/auth/send-welcome-email', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email }),
-            });
-          } catch (err) {
-            console.error('Welcome email error:', err);
+        // 1️⃣ Exchange OAuth code for a Supabase session
+        if (code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) {
+            console.error('Auth exchange error:', exchangeError);
+            router.push('/');
+            return;
           }
         }
 
-        router.push('/dashboard?lang=en');
-      } catch (error) {
-        console.error('Callback error:', error);
-        router.push('/');
-      }
-    };
+        // 2️⃣ Get current user
+        const { data, error } = await supabase.auth.getSession();
+        if (error || !data?.session?.user?.email) {
+          console.error('No valid session after exchange', error);
+          router.replace(`/sign-in?lang=${lang}`);
+          return;
+        }
 
-    handleCallback();
-  }, [code, router]);
+        const email = data.session.user.email;
+        const userId = data.session.user.id;
 
-  return (
-    <div style={{ padding: '2rem', textAlign: 'center' }}>
-      <p>Signing you in...</p>
-    </div>
-  );
-}
+        // 3️⃣ Trigger welcome email once
+        if (!sentRef.current && !cancelled) {
+          sentRef.current = true;
+          const flagKey = `welcome:${userId}`;
 
-export default function CallbackPage() {
-  return (
-    <Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>}>
-      <CallbackContent />
-    </Suspense>
-  );
-}
+          if (!localStorage.getItem(flagKey)) {
+            localStorage.setItem(flagKey, String(Date.now()));
+
+            try {
+              const res = await fetch('/api/email/welcome', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.str
