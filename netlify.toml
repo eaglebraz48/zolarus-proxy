@@ -8,4 +8,4 @@
 # Scheduled function (every 5 min, UTC)
 [[scheduled.functions]]
   function = "reminders-cron"
-  cron = "*/5 * * * *"
+  cron = "*/15 * * * *"
