@@ -1,18 +1,6 @@
 [build]
-command = "npm run build"
-publish = ".next"
+  command = "npm run build"
+  publish = ".next"
 
-# Use the official Next.js plugin
 [[plugins]]
-package = "@netlify/plugin-nextjs"
-
-[functions]
-directory = "netlify/functions"
-node_bundler = "esbuild"
-
-# Scheduled function every 5 minutes
-[[scheduled]]
-path = "/.netlify/functions/reminders-check"
-schedule = "*/5 * * * *"
-
-# ⚠️ Remove any /api/* redirect — the Next plugin handles Next routes.
+  package = "@netlify/plugin-nextjs"
