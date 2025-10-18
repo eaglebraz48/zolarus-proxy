@@ -1,93 +1,43 @@
 'use client';
 
-export const dynamic = 'force-dynamic'; // avoid prerendering this page
-
-import { Suspense, useEffect, useRef } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { sendCustomWelcomeEmail } from '@/app/actions/sendCustomWelcomeEmail';
 
-export default function AuthCallbackPage() {
-  // ✅ Wrap in Suspense so useSearchParams() is allowed during CSR bailout
-  return (
-    <Suspense fallback={<main style={{ padding: '2rem', textAlign: 'center' }}>Signing you in…</main>}>
-      <AuthCallbackContent />
-    </Suspense>
-  );
-}
-
-function AuthCallbackContent() {
+function CallbackInner() {
   const router = useRouter();
   const sp = useSearchParams();
-  const code = sp.get('code');
-  const lang = (sp.get('lang') ?? 'en').toLowerCase();
   const redirect = sp.get('redirect') ?? '/dashboard';
-  const sentRef = useRef(false);
+  const lang = sp.get('lang') ?? 'en';
 
   useEffect(() => {
-    let cancelled = false;
+    (async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
 
-    async function handleCallback() {
-      try {
-        // 1) Exchange OAuth code if present
-        if (code) {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-          if (exchangeError) {
-            console.error('Auth exchange error:', exchangeError);
-            router.replace('/');
-            return;
-          }
-        }
-
-        // 2) Get session
-        const { data, error } = await supabase.auth.getSession();
-        if (error || !data?.session?.user?.email) {
-          console.error('No session after callback', error);
-          router.replace(`/sign-in?lang=${lang}`);
-          return;
-        }
-
-        const email = data.session.user.email;
-        const userId = data.session.user.id;
-
-        // 3) Trigger welcome email once
-        if (!sentRef.current && !cancelled) {
-          sentRef.current = true;
-
-          const flagKey = `welcome:${userId}`;
-          if (!localStorage.getItem(flagKey)) {
-            localStorage.setItem(flagKey, String(Date.now()));
-
-            try {
-              const res = await fetch('/api/email/welcome', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ to: email, lang }),
-              });
-              if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                console.error('Welcome email API failed', { status: res.status, body });
-              } else {
-                console.log('✅ Welcome email triggered from /auth/callback');
-              }
-            } catch (e) {
-              console.error('Welcome email request error', e);
-            }
-          }
-        }
-
-        // 4) Redirect into the app
-        router.replace(`${redirect}?lang=${lang}`);
-      } catch (e) {
-        console.error('Callback error', e);
-        router.replace('/');
+      if (error || !session?.user?.email) {
+        console.error('Login failed or session missing:', error);
+        router.replace(`/sign-in?lang=${encodeURIComponent(lang)}`);
+        return;
       }
-    }
 
-    handleCallback();
-    return () => {
-      cancelled = true;
-    };
-  }, [code, router, lang, redirect]);
+      try {
+        await sendCustomWelcomeEmail(session.user.email, lang);
+      } catch (err) {
+        console.error('Welcome email error:', err);
+      } finally {
+        router.replace(`${redirect}?lang=${encodeURIComponent(lang)}`);
+      }
+    })();
+  }, [router, redirect, lang]);
 
-  return null; // UI handled by Suspense fallback while we redirect
+  return null;
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <CallbackInner />
+    </Suspense>
+  );
 }
