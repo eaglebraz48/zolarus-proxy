@@ -1,123 +1,106 @@
-'use client';
-
-import * as React from 'react';
-import { Suspense } from 'react';
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+// Server component with async searchParams (Next 15-safe)
+// - Shows localized welcome for signed-out visitors
+// - Signed-in users are redirected by middleware (session && "/" -> "/dashboard")
 
 type Lang = 'en' | 'pt' | 'es' | 'fr';
+type SearchParams =
+  | Promise<Record<string, string | string[] | undefined>>
+  | Record<string, string | string[] | undefined>;
 
-const copy: Record<
+const T: Record<
   Lang,
-  { title: string; subtitle: string; signIn: string; rights: string }
+  {
+    title: string;
+    blurb: string;
+    cta: string;
+  }
 > = {
   en: {
     title: 'Welcome to Zolarus',
-    subtitle:
+    blurb:
       'Smart gifting made easy — share your referral link and earn rewards when friends join.',
-    signIn: 'Sign in',
-    rights: 'All rights reserved.',
+    cta: 'Sign in',
   },
   pt: {
     title: 'Bem-vindo ao Zolarus',
-    subtitle:
-      'Presentes inteligentes de forma simples — compartilhe seu link de indicação e ganhe recompensas quando amigos entrarem.',
-    signIn: 'Entrar',
-    rights: 'Todos os direitos reservados.',
+    blurb:
+      'Presentes inteligentes, sem complicação — compartilhe seu link de indicação e ganhe recompensas quando amigos entrarem.',
+    cta: 'Entrar',
   },
   es: {
     title: 'Bienvenido a Zolarus',
-    subtitle:
-      'Regalos inteligentes de forma sencilla — comparte tu enlace de referidos y gana recompensas cuando tus amigos se unan.',
-    signIn: 'Iniciar sesión',
-    rights: 'Todos los derechos reservados.',
+    blurb:
+      'Regalos inteligentes hechos simples — comparte tu enlace de referido y gana recompensas cuando tus amigos se unan.',
+    cta: 'Iniciar sesión',
   },
   fr: {
     title: 'Bienvenue sur Zolarus',
-    subtitle:
-      'Des cadeaux intelligents en toute simplicité — partagez votre lien de parrainage et gagnez des récompenses quand des amis rejoignent.',
-    signIn: 'Se connecter',
-    rights: 'Tous droits réservés.',
+    blurb:
+      'Des cadeaux malins en toute simplicité — partagez votre lien de parrainage et gagnez des récompenses lorsque vos amis nous rejoignent.',
+    cta: 'Se connecter',
   },
 };
 
-export default function HomePage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <HomeContent />
-    </Suspense>
-  );
-}
+export default async function Home({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
+  const sp =
+    (searchParams &&
+      (typeof (searchParams as any).then === 'function'
+        ? await (searchParams as Promise<Record<string, string | string[] | undefined>>)
+        : (searchParams as Record<string, string | string[] | undefined>))) || {};
 
-function HomeContent() {
-  const sp = useSearchParams();
-  const lang = (sp.get('lang') || 'en') as Lang;
-  const t = copy[lang];
+  const rawLang = Array.isArray(sp.lang) ? sp.lang[0] : sp.lang;
+  const lang = (rawLang as Lang) || 'en';
+  const t = T[lang] ?? T.en;
 
-  const withLang = (pathname: string) => {
-    const params = new URLSearchParams();
-    params.set('lang', lang);
-    return { pathname, query: Object.fromEntries(params.entries()) };
-  };
-
-  const shell: React.CSSProperties = {
-    maxWidth: 1100,
-    margin: '0 auto',
-    padding: '24px 16px',
-  };
-  const card: React.CSSProperties = {
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: 16,
-    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-    padding: 24,
-  };
-  const title: React.CSSProperties = { fontSize: 32, fontWeight: 800, marginBottom: 8 };
-  const subtitle: React.CSSProperties = { color: '#475569', lineHeight: 1.6, marginBottom: 20 };
-  const ghostBtn: React.CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: '10px 14px',
-    border: '1px solid #cbd5e1',
-    fontWeight: 600,
-    textDecoration: 'none',
-    color: '#0f172a',
-    background: '#fff',
-  };
-  const footer: React.CSSProperties = {
-    marginTop: 16,
-    paddingTop: 12,
-    borderTop: '1px solid #e2e8f0',
-    fontSize: 12,
-    color: '#64748b',
+  const signInHref = {
+    pathname: '/sign-in',
+    query: { next: '/dashboard', lang },
   };
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 py-8" style={shell}>
+    <main
+      style={{
+        maxWidth: 920,
+        margin: '40px auto',
+        padding: '0 16px',
+      }}
+    >
       <section
-        className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-6 sm:p-8"
-        style={card}
+        style={{
+          border: '1px solid #e2e8f0',
+          borderRadius: 12,
+          background: '#ffffff',
+          padding: '28px 24px',
+        }}
       >
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900" style={title}>
-          {t.title}
-        </h1>
-        <p className="text-slate-600 mt-2" style={subtitle}>
-          {t.subtitle}
-        </p>
+        <h1 style={{ fontSize: 36, fontWeight: 800, marginBottom: 12 }}>{t.title}</h1>
+        <p style={{ color: '#334155', marginBottom: 20 }}>{t.blurb}</p>
 
-        <Link
-          href={withLang('/sign-in')}
-          className="inline-flex items-center rounded-xl px-4 py-2 text-sm font-semibold ring-1 ring-slate-300 hover:bg-slate-50"
-          style={ghostBtn}
+        <a
+          href={`${signInHref.pathname}?next=${encodeURIComponent(
+            signInHref.query.next
+          )}&lang=${encodeURIComponent(lang)}`}
+          style={{
+            display: 'inline-block',
+            background: '#3b82f6',
+            color: '#fff',
+            borderRadius: 10,
+            padding: '10px 14px',
+            fontWeight: 700,
+            textDecoration: 'none',
+          }}
         >
-          {t.signIn}
-        </Link>
-
-        <footer className="mt-8 text-xs text-slate-500" style={footer}>
-          © {new Date().getFullYear()} Zolarus. {t.rights}
-        </footer>
+          {t.cta}
+        </a>
       </section>
+
+      <footer style={{ marginTop: 24, color: '#64748b', fontSize: 12 }}>
+        © 2025 Zolarus. All rights reserved.
+      </footer>
     </main>
   );
 }

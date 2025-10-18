@@ -32,19 +32,17 @@ function Header() {
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
+  // load session once
   useEffect(() => {
     (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       setUserEmail(session?.user?.email || null);
     })();
   }, []);
 
+  // react to auth changes
   useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUserEmail(session?.user?.email ?? null);
     });
     return () => subscription.unsubscribe();
@@ -56,12 +54,34 @@ function Header() {
     router.push(`${pathname}?${params.toString()}`);
   };
 
-  const navLink = (label: string, to: string) => {
+  const hrefWithParams = (to: string) => {
     const params = new URLSearchParams(sp.toString());
     if (!params.get('lang')) params.set('lang', 'en');
+    return { pathname: to, query: Object.fromEntries(params.entries()) };
+  };
+
+  // Gate links on welcome & email form pages only
+  const isWelcomeOrSignIn = pathname === '/' || pathname === '/sign-in';
+
+  const LinkOrDisabled = ({
+    to,
+    label,
+    disabled,
+  }: { to: string; label: string; disabled?: boolean }) => {
+    if (disabled) {
+      return (
+        <span
+          aria-disabled="true"
+          title="Sign in to access"
+          style={{ opacity: 0.45, pointerEvents: 'none', fontWeight: 700, color: '#0f172a' }}
+        >
+          {label}
+        </span>
+      );
+    }
     return (
       <Link
-        href={{ pathname: to, query: Object.fromEntries(params.entries()) }}
+        href={hrefWithParams(to)}
         style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
       >
         {label}
@@ -75,6 +95,31 @@ function Header() {
   };
 
   const forceSignInUI = pathname === '/' || pathname === '/sign-in';
+
+  // Brand behavior:
+  // - On welcome/sign-in: acts like a normal link to "/"
+  // - After that (dashboard/app pages): non-clickable blue word (prevents bouncing to sign-in)
+  const Brand = isWelcomeOrSignIn ? (
+    <Link
+      href={hrefWithParams('/')}
+      style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 800 }}
+    >
+      Zolarus
+    </Link>
+  ) : (
+    <span
+      aria-disabled="true"
+      title="You're already in"
+      style={{
+        color: '#2563eb', // blue
+        fontWeight: 800,
+        pointerEvents: 'none',
+        cursor: 'default',
+      }}
+    >
+      Zolarus
+    </span>
+  );
 
   return (
     <header
@@ -96,13 +141,14 @@ function Header() {
           gap: 16,
         }}
       >
-        {navLink('Zolarus', '/')}
+        {Brand}
+
         <nav style={{ display: 'flex', gap: 16, marginLeft: 8 }}>
-          {navLink('Dashboard', '/dashboard')}
-          {navLink('Shop', '/shop')}
-          {navLink('Refs', '/referrals')}{/* ← changed from /refs to /referrals */}
-          {navLink('Reminders', '/reminders')}
-          {navLink('Profile', '/profile')}
+          <LinkOrDisabled to="/dashboard" label="Dashboard" disabled={isWelcomeOrSignIn} />
+          <LinkOrDisabled to="/shop" label="Shop" disabled={isWelcomeOrSignIn} />
+          <LinkOrDisabled to="/referrals" label="Refs" disabled={isWelcomeOrSignIn} />
+          <LinkOrDisabled to="/reminders" label="Reminders" disabled={isWelcomeOrSignIn} />
+          <LinkOrDisabled to="/profile" label="Profile" disabled={isWelcomeOrSignIn} />
         </nav>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -124,7 +170,12 @@ function Header() {
           </select>
 
           {forceSignInUI || !userEmail ? (
-            navLink('Sign in', '/sign-in')
+            <Link
+              href={hrefWithParams('/sign-in')}
+              style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
+            >
+              Sign in
+            </Link>
           ) : (
             <button
               onClick={handleSignOut}
