@@ -14,7 +14,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body className="bg-slate-50 text-slate-900">
-        {/* Suspense above the whole page tree so any useSearchParams() is compliant */}
+        {/* IMPORTANT: keep the whole app subtree inside Suspense */}
         <Suspense fallback={null}>
           <Header />
           {children}
@@ -35,13 +35,17 @@ function Header() {
 
   useEffect(() => {
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       setUserEmail(session?.user?.email || null);
     })();
   }, []);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setUserEmail(session?.user?.email ?? null);
     });
     return () => subscription.unsubscribe();
@@ -53,22 +57,12 @@ function Header() {
     router.push(`${pathname}?${params.toString()}`);
   };
 
-  // if not signed in, send to /sign-in?next=/target&lang=...
   const navLink = (label: string, to: string) => {
     const params = new URLSearchParams(sp.toString());
     if (!params.get('lang')) params.set('lang', 'en');
-
-    const dest =
-      userEmail
-        ? { pathname: to, query: Object.fromEntries(params.entries()) }
-        : {
-            pathname: '/sign-in',
-            query: { next: to, lang: params.get('lang') ?? 'en' },
-          };
-
     return (
       <Link
-        href={dest}
+        href={{ pathname: to, query: Object.fromEntries(params.entries()) }}
         style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
       >
         {label}
@@ -81,15 +75,31 @@ function Header() {
     router.refresh();
   };
 
-  const forceSignInUI = pathname === '/' || pathname === '/sign-in';
+  const isAuthPage = pathname === '/' || pathname === '/sign-in';
 
-  // Localized label for the seasonal link text
+  // Localized label
   const seasonalLabel =
-    { en: 'Holiday specials', pt: 'Especiais de feriado', es: 'Especiales de temporada', fr: 'Offres saisonnières' }[
-      lang
-    ] ?? 'Holiday specials';
+    {
+      en: 'Holiday specials',
+      pt: 'Especiais de feriado',
+      es: 'Especiales de temporada',
+      fr: 'Offres saisonnières',
+    }[lang] ?? 'Holiday specials';
 
-  // Referral link used on the dashboard button
+  // Gate Holiday link only on / and /sign-in
+  const holidayLink = isAuthPage
+    ? {
+        label: seasonalLabel,
+        href: `/sign-in?next=/go/holiday&lang=${lang}`,
+        color: '#9ca3af', // muted on auth pages
+      }
+    : {
+        label: seasonalLabel,
+        href: 'https://www.amazon.com/?tag=mateussousa-20',
+        color: '#dc2626', // active red elsewhere
+      };
+
+  // Referral target shown on dashboard; leave as-is
   const referralHref = `/?ref=global&lang=${encodeURIComponent(lang)}`;
 
   return (
@@ -117,28 +127,19 @@ function Header() {
           {navLink('Dashboard', '/dashboard')}
           {navLink('Shop', '/shop')}
 
-          {/* Holiday specials — gated like other items */}
-          {userEmail ? (
-            <a
-              href="https://www.amazon.com/?tag=mateussousa-20"
-              target="_blank"
-              rel="noopener noreferrer nofollow sponsored"
-              style={{ textDecoration: 'none', color: '#b91c1c', fontWeight: 800 }}
-            >
-              {seasonalLabel}
-            </a>
-          ) : (
-            <Link
-              href={{ pathname: '/sign-in', query: { next: '/go/holiday', lang } }}
-              style={{ textDecoration: 'none', color: '#b91c1c', fontWeight: 800 }}
-            >
-              {seasonalLabel}
-            </Link>
-          )}
+          {/* Holiday specials (gated on landing/sign-in only) */}
+          <a
+            href={holidayLink.href}
+            target={isAuthPage ? undefined : '_blank'}
+            rel={isAuthPage ? undefined : 'noopener noreferrer nofollow sponsored'}
+            style={{ textDecoration: 'none', fontWeight: 700, color: holidayLink.color }}
+          >
+            {holidayLink.label}
+          </a>
 
-          {/* Refs → same referral URL when signed in; otherwise sign-in first */}
+          {/* Refs kept as before */}
           <Link
-            href={userEmail ? referralHref : { pathname: '/sign-in', query: { next: '/', lang } }}
+            href={referralHref}
             style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
           >
             Refs
@@ -166,13 +167,8 @@ function Header() {
             <option value="fr">Français</option>
           </select>
 
-          {forceSignInUI || !userEmail ? (
-            <Link
-              href={{ pathname: '/sign-in', query: { lang } }}
-              style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
-            >
-              Sign in
-            </Link>
+          {!userEmail ? (
+            navLink('Sign in', '/sign-in')
           ) : (
             <button
               onClick={handleSignOut}
