@@ -16,9 +16,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="bg-slate-50 text-slate-900">
         <Suspense fallback={null}>
           <Header />
-          {children}
-          <ChatWidget />
         </Suspense>
+        {children}
+        <ChatWidget />
       </body>
     </html>
   );
@@ -34,13 +34,17 @@ function Header() {
 
   useEffect(() => {
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       setUserEmail(session?.user?.email || null);
     })();
   }, []);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setUserEmail(session?.user?.email ?? null);
     });
     return () => subscription.unsubscribe();
@@ -52,49 +56,25 @@ function Header() {
     router.push(`${pathname}?${params.toString()}`);
   };
 
-const navLink = (label: string, to: string) => {
-  const params = new URLSearchParams(sp.toString());
-
-  // keep language, drop "next" so links don’t nest redirects
-  const lang = params.get('lang') || 'en';
-  params.delete('next');
-
-  return (
-    <Link
-      href={{ pathname: to, query: { lang } }}
-      style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
-    >
-      {label}
-    </Link>
-  );
-};
-
+  const navLink = (label: string, to: string) => {
+    const params = new URLSearchParams(sp.toString());
+    if (!params.get('lang')) params.set('lang', 'en');
+    return (
+      <Link
+        href={{ pathname: to, query: Object.fromEntries(params.entries()) }}
+        style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
+      >
+        {label}
+      </Link>
+    );
+  };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     router.refresh();
   };
 
-  const isLanding = pathname === '/' || pathname === '/sign-in';
-
-  const seasonalLabel =
-    { en: 'Holiday specials', pt: 'Especiais de feriado', es: 'Especiales de temporada', fr: 'Offres saisonnières' }[
-      lang
-    ] ?? 'Holiday specials';
-
-  const holidayLink = isLanding
-    ? {
-        label: seasonalLabel,
-        href: `/sign-in?next=/go/holiday&lang=${lang}`,
-        color: '#9ca3af',
-      }
-    : {
-        label: seasonalLabel,
-        href: 'https://www.amazon.com/?tag=mateussousa-20',
-        color: '#dc2626',
-      };
-
-  const referralHref = `/?ref=global&lang=${encodeURIComponent(lang)}`;
+  const forceSignInUI = pathname === '/' || pathname === '/sign-in';
 
   return (
     <header
@@ -120,17 +100,7 @@ const navLink = (label: string, to: string) => {
         <nav style={{ display: 'flex', gap: 16, marginLeft: 8 }}>
           {navLink('Dashboard', '/dashboard')}
           {navLink('Shop', '/shop')}
-          <a
-            href={holidayLink.href}
-            target={isLanding ? undefined : '_blank'}
-            rel={isLanding ? undefined : 'noopener noreferrer nofollow sponsored'}
-            style={{ textDecoration: 'none', fontWeight: 700, color: holidayLink.color }}
-          >
-            {holidayLink.label}
-          </a>
-          <Link href={referralHref} style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}>
-            Refs
-          </Link>
+          {navLink('Refs', '/referrals')}{/* ← changed from /refs to /referrals */}
           {navLink('Reminders', '/reminders')}
           {navLink('Profile', '/profile')}
         </nav>
@@ -153,13 +123,8 @@ const navLink = (label: string, to: string) => {
             <option value="fr">Français</option>
           </select>
 
-          {!userEmail ? (
-            <Link
-              href={{ pathname: '/sign-in', query: { lang } }}
-              style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
-            >
-              Sign in
-            </Link>
+          {forceSignInUI || !userEmail ? (
+            navLink('Sign in', '/sign-in')
           ) : (
             <button
               onClick={handleSignOut}
