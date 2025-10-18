@@ -53,12 +53,22 @@ function Header() {
     router.push(`${pathname}?${params.toString()}`);
   };
 
+  // if not signed in, send to /sign-in?next=/target&lang=...
   const navLink = (label: string, to: string) => {
     const params = new URLSearchParams(sp.toString());
     if (!params.get('lang')) params.set('lang', 'en');
+
+    const dest =
+      userEmail
+        ? { pathname: to, query: Object.fromEntries(params.entries()) }
+        : {
+            pathname: '/sign-in',
+            query: { next: to, lang: params.get('lang') ?? 'en' },
+          };
+
     return (
       <Link
-        href={{ pathname: to, query: Object.fromEntries(params.entries()) }}
+        href={dest}
         style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
       >
         {label}
@@ -73,7 +83,7 @@ function Header() {
 
   const forceSignInUI = pathname === '/' || pathname === '/sign-in';
 
-  // Localized label for the seasonal link text only (still goes to Amazon)
+  // Localized label for the seasonal link text
   const seasonalLabel =
     { en: 'Holiday specials', pt: 'Especiais de feriado', es: 'Especiales de temporada', fr: 'Offres saisonnières' }[
       lang
@@ -107,19 +117,28 @@ function Header() {
           {navLink('Dashboard', '/dashboard')}
           {navLink('Shop', '/shop')}
 
-          {/* Holiday specials → external Amazon affiliate link (visible color) */}
-          <a
-            href="https://www.amazon.com/?tag=mateussousa-20"
-            target="_blank"
-            rel="noopener noreferrer nofollow sponsored"
-            style={{ textDecoration: 'none', color: '#b91c1c', fontWeight: 800 }}
-          >
-            {seasonalLabel}
-          </a>
+          {/* Holiday specials — gated like other items */}
+          {userEmail ? (
+            <a
+              href="https://www.amazon.com/?tag=mateussousa-20"
+              target="_blank"
+              rel="noopener noreferrer nofollow sponsored"
+              style={{ textDecoration: 'none', color: '#b91c1c', fontWeight: 800 }}
+            >
+              {seasonalLabel}
+            </a>
+          ) : (
+            <Link
+              href={{ pathname: '/sign-in', query: { next: '/go/holiday', lang } }}
+              style={{ textDecoration: 'none', color: '#b91c1c', fontWeight: 800 }}
+            >
+              {seasonalLabel}
+            </Link>
+          )}
 
-          {/* Refs → route disabled; point to the same referral URL as the dashboard button */}
+          {/* Refs → same referral URL when signed in; otherwise sign-in first */}
           <Link
-            href={referralHref}
+            href={userEmail ? referralHref : { pathname: '/sign-in', query: { next: '/', lang } }}
             style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
           >
             Refs
@@ -148,7 +167,12 @@ function Header() {
           </select>
 
           {forceSignInUI || !userEmail ? (
-            navLink('Sign in', '/sign-in')
+            <Link
+              href={{ pathname: '/sign-in', query: { lang } }}
+              style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
+            >
+              Sign in
+            </Link>
           ) : (
             <button
               onClick={handleSignOut}
