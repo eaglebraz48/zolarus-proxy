@@ -52,18 +52,23 @@ function Header() {
     router.push(`${pathname}?${params.toString()}`);
   };
 
-  const navLink = (label: string, to: string) => {
-    const params = new URLSearchParams(sp.toString());
-    if (!params.get('lang')) params.set('lang', 'en');
-    return (
-      <Link
-        href={{ pathname: to, query: Object.fromEntries(params.entries()) }}
-        style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
-      >
-        {label}
-      </Link>
-    );
-  };
+const navLink = (label: string, to: string) => {
+  const params = new URLSearchParams(sp.toString());
+
+  // keep language, drop "next" so links don’t nest redirects
+  const lang = params.get('lang') || 'en';
+  params.delete('next');
+
+  return (
+    <Link
+      href={{ pathname: to, query: { lang } }}
+      style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
+    >
+      {label}
+    </Link>
+  );
+};
+
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();

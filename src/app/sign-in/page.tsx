@@ -1,18 +1,68 @@
+// src/app/sign-in/page.tsx
 'use client';
 
-import { useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 export default function SignInPage() {
+  const router = useRouter();
+  const pathname = usePathname();
   const sp = useSearchParams();
+
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [err, setErr] = useState<string | null>(null);
 
-  // Respect existing query params; default next => /dashboard
-  const next = sp.get('next') || '/dashboard';
+  // Raw query values
+  const rawNext = sp.get('next') || '/dashboard';
   const lang = sp.get('lang') || 'en';
+
+  // 1) Sanitize next to avoid loops
+  const safeNext = useMemo(() => {
+    if (rawNext.startsWith('/sign-in')) return '/dashboard';
+    if (rawNext.startsWith('/go/holiday')) return '/dashboard';
+    return rawNext;
+  }, [rawNext]);
+
+  // 2) Merge lang into the next URL safely (no double '?')
+  const destination = useMemo(() => {
+    try {
+      const origin =
+        typeof window !== 'undefined'
+          ? window.location.origin
+          : 'http://localhost';
+
+      const url = new URL(safeNext, origin);
+      if (!url.searchParams.get('lang')) {
+        url.searchParams.set('lang', lang);
+      }
+      // Return a path+query only (no origin) for Next router
+      return url.pathname + (url.search || '');
+    } catch {
+      // Fallback if URL constructor ever fails
+      const sep = safeNext.includes('?') ? '&' : '?';
+      return `${safeNext}${sep}lang=${encodeURIComponent(lang)}`;
+    }
+  }, [safeNext, lang]);
+
+  // 3) If already signed in, go straight to destination (avoid redirecting to itself)
+  useEffect(() => {
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        // Do not replace if we are already at the destination
+        if (pathname + (sp.toString() ? `?${sp.toString()}` : '') !== destination) {
+          router.replace(destination);
+        }
+      }
+    })();
+    // NOTE: sp is stable in Next’s app router; we compare strings to avoid loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, pathname, destination]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -20,23 +70,19 @@ export default function SignInPage() {
     setErr(null);
 
     try {
-      // Build absolute redirect URL to your auth callback with next+lang preserved
       const origin =
         typeof window !== 'undefined'
           ? window.location.origin
           : process.env.NEXT_PUBLIC_SITE_URL || '';
 
       const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent(
-        next
+        safeNext
       )}&lang=${encodeURIComponent(lang)}`;
 
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: {
-          emailRedirectTo, // ← critical: ensures post-click lands on /dashboard (or next=)
-        },
+        options: { emailRedirectTo },
       });
-
       if (error) throw error;
 
       setStatus('sent');
@@ -51,10 +97,19 @@ export default function SignInPage() {
       <h1 style={{ fontSize: 36, fontWeight: 800, marginBottom: 24 }}>Sign in</h1>
 
       {status === 'sent' ? (
-        <div style={{ padding: 16, border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc' }}>
-          <p>Check your inbox for a magic link. After you click it, you’ll be sent to your page.</p>
+        <div
+          style={{
+            padding: 16,
+            border: '1px solid #e2e8f0',
+            borderRadius: 10,
+            background: '#f8fafc',
+          }}
+        >
+          <p>
+            Check your inbox for a magic link. After you click it, you’ll be sent to your page.
+          </p>
           <p style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
-            Destination: <code>{next}</code>
+            Destination: <code>{destination}</code>
           </p>
         </div>
       ) : (
@@ -94,11 +149,7 @@ export default function SignInPage() {
             {status === 'sending' ? 'Sending…' : 'Send email'}
           </button>
 
-          {err && (
-            <p style={{ color: '#b91c1c', marginTop: 4 }}>
-              {err}
-            </p>
-          )}
+          {err && <p style={{ color: '#b91c1c', marginTop: 4 }}>{err}</p>}
 
           <a href={`/?lang=${encodeURIComponent(lang)}`} style={{ marginTop: 10 }}>
             ← Back to home
@@ -108,3 +159,4 @@ export default function SignInPage() {
     </main>
   );
 }
+
