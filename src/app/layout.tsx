@@ -6,7 +6,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
-import ChatWidget from '@/components/ChatWidget'; // ← keeps your existing widget
+import ChatWidget from '@/components/ChatWidget';
 
 type Lang = 'en' | 'pt' | 'es' | 'fr';
 
@@ -14,11 +14,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body className="bg-slate-50 text-slate-900">
-        {/* Wrap the whole page subtree so any useSearchParams() in pages is inside Suspense */}
+        {/* Suspense above the whole page tree so any useSearchParams() is compliant */}
         <Suspense fallback={null}>
           <Header />
           {children}
-          <ChatWidget /> {/* renders on every page, unchanged */}
+          <ChatWidget />
         </Suspense>
       </body>
     </html>
@@ -35,17 +35,13 @@ function Header() {
 
   useEffect(() => {
     (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       setUserEmail(session?.user?.email || null);
     })();
   }, []);
 
   useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUserEmail(session?.user?.email ?? null);
     });
     return () => subscription.unsubscribe();
@@ -77,14 +73,14 @@ function Header() {
 
   const forceSignInUI = pathname === '/' || pathname === '/sign-in';
 
-  // localized label for the seasonal “Explore gifts” replacement
+  // Localized label for the seasonal link text only (still goes to Amazon)
   const seasonalLabel =
-    {
-      en: 'Holiday specials',
-      pt: 'Especiais de feriado',
-      es: 'Especiales de temporada',
-      fr: 'Offres saisonnières',
-    }[lang] ?? 'Holiday specials';
+    { en: 'Holiday specials', pt: 'Especiais de feriado', es: 'Especiales de temporada', fr: 'Offres saisonnières' }[
+      lang
+    ] ?? 'Holiday specials';
+
+  // Referral link used on the dashboard button
+  const referralHref = `/?ref=global&lang=${encodeURIComponent(lang)}`;
 
   return (
     <header
@@ -110,9 +106,25 @@ function Header() {
         <nav style={{ display: 'flex', gap: 16, marginLeft: 8 }}>
           {navLink('Dashboard', '/dashboard')}
           {navLink('Shop', '/shop')}
-          {/* REPLACED: Explore gifts -> localized seasonal link to /shop with a promo flag */}
-          {navLink(seasonalLabel, '/shop?promo=seasonal')}
-          {navLink('Refs', '/refs')}
+
+          {/* Holiday specials → external Amazon affiliate link (visible color) */}
+          <a
+            href="https://www.amazon.com/?tag=mateussousa-20"
+            target="_blank"
+            rel="noopener noreferrer nofollow sponsored"
+            style={{ textDecoration: 'none', color: '#b91c1c', fontWeight: 800 }}
+          >
+            {seasonalLabel}
+          </a>
+
+          {/* Refs → route disabled; point to the same referral URL as the dashboard button */}
+          <Link
+            href={referralHref}
+            style={{ textDecoration: 'none', color: '#0f172a', fontWeight: 700 }}
+          >
+            Refs
+          </Link>
+
           {navLink('Reminders', '/reminders')}
           {navLink('Profile', '/profile')}
         </nav>
