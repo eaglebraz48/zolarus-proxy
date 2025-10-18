@@ -6,7 +6,8 @@ import { useSearchParams } from 'next/navigation';
 
 type Msg = { role: 'bot' | 'user'; text: string };
 
-export default function ChatWidget({ email }: { email: string | null }) {
+export default function ChatWidget({ email = null }: { email?: string | null }) {
+
   const sp = useSearchParams();
   const lang = (sp.get('lang') || 'en').toLowerCase() as 'en' | 'pt' | 'es' | 'fr';
 
