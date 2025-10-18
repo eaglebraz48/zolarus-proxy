@@ -1,142 +1,110 @@
 'use client';
 
-import * as React from "react";
-import { Suspense } from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
-// Supported languages and translations
-const LANGS = ["en", "pt", "es", "fr"];
-type Lang = (typeof LANGS)[number];
-const isLang = (v: string | null): v is Lang => !!v && LANGS.includes(v as Lang);
-
-const L: Record<Lang, any> = {
-  en: {
-    title: "Sign in",
-    email: "Email",
-    send: "Send email",
-    back: "← Back to home",
-    sent: "Check your email for the login link!",
-  },
-  pt: {
-    title: "Entrar",
-    email: "Email",
-    send: "Enviar email",
-    back: "← Voltar ao início",
-    sent: "Verifique seu email pelo link!",
-  },
-  es: {
-    title: "Iniciar sesión",
-    email: "Correo",
-    send: "Enviar correo",
-    back: "← Volver al inicio",
-    sent: "¡Revisa tu correo para el enlace!",
-  },
-  fr: {
-    title: "Se connecter",
-    email: "Email",
-    send: "Envoyer l’email",
-    back: "← Retour à l’accueil",
-    sent: "Vérifiez votre email pour le lien !",
-  },
-};
-
-// ✅ Suspense wrapper added
 export default function SignInPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <SignInContent />
-    </Suspense>
-  );
-}
-
-function SignInContent() {
   const sp = useSearchParams();
-  const lang = (isLang(sp.get("lang")) ? sp.get("lang") : "en") as Lang;
-  const t = L[lang];
-  const redirect = sp.get("redirect") || "/dashboard";
+  const [email, setEmail] = useState('');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [err, setErr] = useState<string | null>(null);
 
-  const [email, setEmail] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
+  // Respect existing query params; default next => /dashboard
+  const next = sp.get('next') || '/dashboard';
+  const lang = sp.get('lang') || 'en';
 
-  const withLang = (href: string) => {
-    const p = new URLSearchParams(sp as unknown as URLSearchParams);
-    p.set("lang", lang);
-    return `${href}?${p.toString()}`;
-  };
-
-  const handleSend = async (e: React.FormEvent) => {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email.trim()) return;
+    setStatus('sending');
+    setErr(null);
 
     try {
-      setLoading(true);
-      const origin = window.location.origin;
+      // Build absolute redirect URL to your auth callback with next+lang preserved
+      const origin =
+        typeof window !== 'undefined'
+          ? window.location.origin
+          : process.env.NEXT_PUBLIC_SITE_URL || '';
+
+      const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent(
+        next
+      )}&lang=${encodeURIComponent(lang)}`;
 
       const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
+        email,
         options: {
-          emailRedirectTo: `${origin}/auth/callback?redirect=${encodeURIComponent(
-            redirect
-          )}&lang=${lang}`,
+          emailRedirectTo, // ← critical: ensures post-click lands on /dashboard (or next=)
         },
       });
 
-      if (error) {
-        alert(error.message);
-        return;
-      }
+      if (error) throw error;
 
-      alert(t.sent);
-    } finally {
-      setLoading(false);
+      setStatus('sent');
+    } catch (e: any) {
+      setErr(e?.message ?? 'Failed to send magic link.');
+      setStatus('error');
     }
-  };
+  }
 
   return (
-    <div style={{ maxWidth: 860, margin: "2rem auto", padding: "0 1rem" }}>
-      <h1 style={{ fontWeight: 900, fontSize: 34, marginBottom: 16 }}>{t.title}</h1>
-      <form onSubmit={handleSend} style={{ display: "grid", gap: 12, maxWidth: 520 }}>
-        <label htmlFor="email" style={{ fontWeight: 700 }}>
-          {t.email}
-        </label>
-        <input
-          id="email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          placeholder="you@example.com"
-          style={{
-            border: "1px solid #e5e7eb",
-            borderRadius: 8,
-            padding: "10px 12px",
-            fontSize: 16,
-          }}
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            backgroundColor: "#3B82F6",
-            color: "#fff",
-            border: "none",
-            borderRadius: 8,
-            padding: "10px 14px",
-            fontWeight: 700,
-            fontSize: 14,
-            cursor: loading ? "not-allowed" : "pointer",
-            width: "fit-content",
-          }}
-        >
-          {loading ? "…" : t.send}
-        </button>
-      </form>
+    <main style={{ maxWidth: 720, margin: '40px auto', padding: '0 16px' }}>
+      <h1 style={{ fontSize: 36, fontWeight: 800, marginBottom: 24 }}>Sign in</h1>
 
-      <div style={{ marginTop: 16 }}>
-        <Link href={withLang("/")}>{t.back}</Link>
-      </div>
-    </div>
+      {status === 'sent' ? (
+        <div style={{ padding: 16, border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc' }}>
+          <p>Check your inbox for a magic link. After you click it, you’ll be sent to your page.</p>
+          <p style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
+            Destination: <code>{next}</code>
+          </p>
+        </div>
+      ) : (
+        <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12, maxWidth: 520 }}>
+          <label htmlFor="email" style={{ fontWeight: 700 }}>
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            style={{
+              border: '1px solid #cbd5e1',
+              borderRadius: 10,
+              padding: '10px 12px',
+            }}
+          />
+
+          <button
+            type="submit"
+            disabled={status === 'sending'}
+            style={{
+              background: '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 10,
+              padding: '10px 14px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              opacity: status === 'sending' ? 0.7 : 1,
+              width: 120,
+            }}
+          >
+            {status === 'sending' ? 'Sending…' : 'Send email'}
+          </button>
+
+          {err && (
+            <p style={{ color: '#b91c1c', marginTop: 4 }}>
+              {err}
+            </p>
+          )}
+
+          <a href={`/?lang=${encodeURIComponent(lang)}`} style={{ marginTop: 10 }}>
+            ← Back to home
+          </a>
+        </form>
+      )}
+    </main>
   );
 }
