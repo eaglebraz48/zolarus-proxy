@@ -6,7 +6,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
-import ChatWidget from '@/components/ChatWidget'; // ← added
+import ChatWidget from '@/components/ChatWidget'; // ← keeps your existing widget
 
 type Lang = 'en' | 'pt' | 'es' | 'fr';
 
@@ -14,11 +14,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body className="bg-slate-50 text-slate-900">
+        {/* Wrap the whole page subtree so any useSearchParams() in pages is inside Suspense */}
         <Suspense fallback={null}>
           <Header />
+          {children}
+          <ChatWidget /> {/* renders on every page, unchanged */}
         </Suspense>
-        {children}
-        <ChatWidget /> {/* ← added, renders on every page */}
       </body>
     </html>
   );
@@ -76,6 +77,15 @@ function Header() {
 
   const forceSignInUI = pathname === '/' || pathname === '/sign-in';
 
+  // localized label for the seasonal “Explore gifts” replacement
+  const seasonalLabel =
+    {
+      en: 'Holiday specials',
+      pt: 'Especiais de feriado',
+      es: 'Especiales de temporada',
+      fr: 'Offres saisonnières',
+    }[lang] ?? 'Holiday specials';
+
   return (
     <header
       style={{
@@ -100,7 +110,8 @@ function Header() {
         <nav style={{ display: 'flex', gap: 16, marginLeft: 8 }}>
           {navLink('Dashboard', '/dashboard')}
           {navLink('Shop', '/shop')}
-          {navLink('Explore gifts', '/explore')}
+          {/* REPLACED: Explore gifts -> localized seasonal link to /shop with a promo flag */}
+          {navLink(seasonalLabel, '/shop?promo=seasonal')}
           {navLink('Refs', '/refs')}
           {navLink('Reminders', '/reminders')}
           {navLink('Profile', '/profile')}
