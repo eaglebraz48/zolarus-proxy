@@ -1,43 +1,43 @@
+// src/app/auth/callback/page.tsx
 'use client';
 
-import { Suspense, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { sendCustomWelcomeEmail } from '@/app/actions/sendCustomWelcomeEmail';
 
-function CallbackInner() {
+export default function AuthCallback() {
   const router = useRouter();
   const sp = useSearchParams();
-  const redirect = sp.get('redirect') ?? '/dashboard';
-  const lang = sp.get('lang') ?? 'en';
 
   useEffect(() => {
     (async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
+      const next = sp.get('next') || '/dashboard';
+      const lang = sp.get('lang') || 'en';
 
-      if (error || !session?.user?.email) {
-        console.error('Login failed or session missing:', error);
-        router.replace(`/sign-in?lang=${encodeURIComponent(lang)}`);
+      // Finalize the magic-link login (PKCE)
+      const { error } = await supabase.auth.exchangeCodeForSession();
+
+      // If something odd happens, fall back to sign-in but preserve intent
+      if (error && error.message !== 'Auth session missing!') {
+        router.replace(
+          `/sign-in?lang=${encodeURIComponent(lang)}&next=${encodeURIComponent(next)}&error=auth`
+        );
         return;
       }
 
-      try {
-        await sendCustomWelcomeEmail(session.user.email, lang);
-      } catch (err) {
-        console.error('Welcome email error:', err);
-      } finally {
-        router.replace(`${redirect}?lang=${encodeURIComponent(lang)}`);
-      }
+      // Success → send them to their intended page (default /dashboard)
+      const join = next.includes('?') ? '&' : '?';
+      router.replace(`${next}${join}lang=${encodeURIComponent(lang)}`);
     })();
-  }, [router, redirect, lang]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  return null;
-}
-
-export default function Page() {
   return (
-    <Suspense fallback={null}>
-      <CallbackInner />
-    </Suspense>
+    <main style={{ maxWidth: 720, margin: '48px auto', padding: '0 16px' }}>
+      <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 12 }}>Signing you in…</h1>
+      <p style={{ color: '#64748b' }}>
+        One moment. If this takes longer than a couple seconds, you can close this tab.
+      </p>
+    </main>
   );
 }
