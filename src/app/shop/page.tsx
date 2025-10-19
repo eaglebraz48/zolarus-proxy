@@ -1,4 +1,4 @@
-// HERE IT IS
+// src/app/shop/page.tsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -161,7 +161,7 @@ export default function ShopPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forWhom, occasion, keywords, min, max]);
 
-  // ✅ NEW: if coming back from Stripe, snap to stored language
+  // ✅ If coming back from Stripe, snap to stored language
   useEffect(() => {
     if (sp.get('thanks') === 'sub') {
       try {
@@ -200,9 +200,10 @@ export default function ShopPage() {
     router.push(withLang('/shop?fresh=1'));
   }
 
-  // ✅ NEW: language-preserving Subscribe link
-  const stripeBase = 'https://buy.stripe.com/bJeeV563U5yyaJ15uMfAc00';
-  const subscribeHref = `${stripeBase}?client_reference_id=lang:${encodeURIComponent(lang)}`;
+  // ✅ language-preserving, Stripe-safe Subscribe link
+  const stripeBase = 'https://buy.stripe.com/bJeeV563U5yyaJi5uMfAc00';
+  const clientRef = encodeURIComponent(`lang:${lang}`);   // encode the whole value (colon included)
+  const subscribeHref = `${stripeBase}?client_reference_id=${clientRef}&locale=${encodeURIComponent(lang)}`;
   function onSubscribeClick() {
     try {
       localStorage.setItem('z_pref_lang', lang);
@@ -218,8 +219,8 @@ export default function ShopPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <p style={{ marginTop: 6, color: '#374151', fontWeight: 500, marginBottom: 0 }}>{txt.compare}</p>
         <a
-          href={subscribeHref}        // ← was the fixed Stripe link; now includes client_reference_id
-          onClick={onSubscribeClick}  // ← remember current lang before leaving
+          href={subscribeHref}
+          onClick={onSubscribeClick}
           target="_blank"
           rel="noopener noreferrer"
           style={{ background: '#0f172a', color: '#fff', padding: '4px 10px', borderRadius: 6, textDecoration: 'none', fontWeight: 600 }}
