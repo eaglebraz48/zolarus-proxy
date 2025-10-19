@@ -1,20 +1,10 @@
-// Server component with async searchParams (Next 15-safe)
-// - Shows localized welcome for signed-out visitors
-// - Signed-in users are redirected by middleware (session && "/" -> "/dashboard")
+// src/app/page.tsx
+// Server component – Promise-based searchParams (matches Next 15 typing)
 
 type Lang = 'en' | 'pt' | 'es' | 'fr';
-type SearchParams =
-  | Promise<Record<string, string | string[] | undefined>>
-  | Record<string, string | string[] | undefined>;
+type SP = Record<string, string | string[] | undefined>;
 
-const T: Record<
-  Lang,
-  {
-    title: string;
-    blurb: string;
-    cta: string;
-  }
-> = {
+const T: Record<Lang, { title: string; blurb: string; cta: string }> = {
   en: {
     title: 'Welcome to Zolarus',
     blurb:
@@ -44,13 +34,9 @@ const T: Record<
 export default async function Home({
   searchParams,
 }: {
-  searchParams?: SearchParams;
+  searchParams?: Promise<SP>;
 }) {
-  const sp =
-    (searchParams &&
-      (typeof (searchParams as any).then === 'function'
-        ? await (searchParams as Promise<Record<string, string | string[] | undefined>>)
-        : (searchParams as Record<string, string | string[] | undefined>))) || {};
+  const sp: SP = (await (searchParams ?? Promise.resolve({}))) as SP;
 
   const rawLang = Array.isArray(sp.lang) ? sp.lang[0] : sp.lang;
   const lang = (rawLang as Lang) || 'en';
@@ -62,13 +48,7 @@ export default async function Home({
   };
 
   return (
-    <main
-      style={{
-        maxWidth: 920,
-        margin: '40px auto',
-        padding: '0 16px',
-      }}
-    >
+    <main style={{ maxWidth: 920, margin: '40px auto', padding: '0 16px' }}>
       <section
         style={{
           border: '1px solid #e2e8f0',
@@ -77,7 +57,9 @@ export default async function Home({
           padding: '28px 24px',
         }}
       >
-        <h1 style={{ fontSize: 36, fontWeight: 800, marginBottom: 12 }}>{t.title}</h1>
+        <h1 style={{ fontSize: 36, fontWeight: 800, marginBottom: 12 }}>
+          {t.title}
+        </h1>
         <p style={{ color: '#334155', marginBottom: 20 }}>{t.blurb}</p>
 
         <a

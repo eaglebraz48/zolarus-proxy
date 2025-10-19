@@ -14,11 +14,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body className="bg-slate-50 text-slate-900">
+        {/* Wrap EVERYTHING so any useSearchParams() below is safe at prerender */}
         <Suspense fallback={null}>
           <Header />
+          {children}
+          <ChatWidget />
         </Suspense>
-        {children}
-        <ChatWidget />
       </body>
     </html>
   );
@@ -96,9 +97,6 @@ function Header() {
 
   const forceSignInUI = pathname === '/' || pathname === '/sign-in';
 
-  // Brand behavior:
-  // - On welcome/sign-in: acts like a normal link to "/"
-  // - After that (dashboard/app pages): non-clickable blue word (prevents bouncing to sign-in)
   const Brand = isWelcomeOrSignIn ? (
     <Link
       href={hrefWithParams('/')}
@@ -111,7 +109,7 @@ function Header() {
       aria-disabled="true"
       title="You're already in"
       style={{
-        color: '#2563eb', // blue
+        color: '#2563eb',
         fontWeight: 800,
         pointerEvents: 'none',
         cursor: 'default',

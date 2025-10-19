@@ -1,15 +1,14 @@
 'use client';
-// src/app/browse/page.tsx
+
+import { Suspense } from 'react';
+// keep your existing imports (useSearchParams, etc.)
+
 export default function BrowsePage() {
+  // keep your current logic exactly as-is (including useSearchParams())
+
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Explore gifts</h1>
-      <div className="card">
-        <p className="text-sm text-gray-700">
-          Ideas & inspiration (placeholder). You can replace this with your
-          curated lists or categories.
-        </p>
-      </div>
-    </div>
+    <Suspense fallback={null}>
+      {/* paste your current returned JSX here, unchanged */}
+    </Suspense>
   );
 }

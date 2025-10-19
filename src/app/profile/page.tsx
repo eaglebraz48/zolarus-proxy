@@ -1,7 +1,7 @@
 // src/app/profile/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 
@@ -137,58 +137,60 @@ export default function ProfilePage() {
   if (loading) return <div className="p-6">{L.loading}</div>;
 
   return (
-    <main className="max-w-3xl mx-auto p-6">
-      <h1 className="text-4xl font-extrabold tracking-tight">{L.title}</h1>
-      <p className="text-gray-600 mt-1">{L.subtitle}</p>
+    <Suspense fallback={null}>
+      <main className="max-w-3xl mx-auto p-6">
+        <h1 className="text-4xl font-extrabold tracking-tight">{L.title}</h1>
+        <p className="text-gray-600 mt-1">{L.subtitle}</p>
 
-      <form onSubmit={saveProfile} className="mt-8 space-y-5">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">{L.fullName}</label>
-          <input
-            className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-            value={form.full_name ?? ""}
-            onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-            placeholder="Jane Doe"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">{L.phone}</label>
-          <input
-            className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-            value={form.phone ?? ""}
-            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-            placeholder={L.phonePH}
-          />
-        </div>
-
-        <div className="flex gap-3">
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-lg bg-blue-600 px-5 py-3 text-white font-medium hover:bg-blue-700 disabled:opacity-60"
-          >
-            {saving ? L.saving : L.save}
-          </button>
-
-          <Link
-            href="/dashboard"
-            className="rounded-lg bg-gray-100 px-5 py-3 font-medium hover:bg-gray-200"
-          >
-            {L.back}
-          </Link>
-        </div>
-
-        {msg && (
-          <div
-            className={`rounded-lg px-4 py-3 text-sm ${
-              msg === L.saved ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-            }`}
-          >
-            {msg}
+        <form onSubmit={saveProfile} className="mt-8 space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">{L.fullName}</label>
+            <input
+              className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              value={form.full_name ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+              placeholder="Jane Doe"
+            />
           </div>
-        )}
-      </form>
-    </main>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">{L.phone}</label>
+            <input
+              className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              value={form.phone ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+              placeholder={L.phonePH}
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-blue-600 px-5 py-3 text-white font-medium hover:bg-blue-700 disabled:opacity-60"
+            >
+              {saving ? L.saving : L.save}
+            </button>
+
+            <Link
+              href="/dashboard"
+              className="rounded-lg bg-gray-100 px-5 py-3 font-medium hover:bg-gray-200"
+            >
+              {L.back}
+            </Link>
+          </div>
+
+          {msg && (
+            <div
+              className={`rounded-lg px-4 py-3 text-sm ${
+                msg === L.saved ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+              }`}
+            >
+              {msg}
+            </div>
+          )}
+        </form>
+      </main>
+    </Suspense>
   );
 }

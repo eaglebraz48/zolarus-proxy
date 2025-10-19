@@ -9,6 +9,9 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
+/* ---------------------- config ---------------------- */
+const STRIPE_LINK = "https://buy.stripe.com/bJeeV563U5yyaJi5uMfAc00";
+
 /* ---------------------- i18n (page-local strings) ---------------------- */
 type Lang = "en" | "pt" | "es" | "fr";
 const LANGS: Lang[] = ["en", "pt", "es", "fr"];
@@ -36,6 +39,12 @@ const L: Record<
     referralsCaption: string;
     copy: string;
     share: string;
+
+    // Compare block (no lock, no learn more)
+    compareTitle: string;
+    comparePriceLine: string;
+    subscribeCta: string;
+    benefits: string;
   }
 > = {
   en: {
@@ -49,7 +58,8 @@ const L: Record<
     refs: "Refs",
     browseNow: "Browse / Shop now",
     reminders: "Reminders",
-    remindersLead: "Set reminders for special occasions and we'll email you on time.",
+    remindersLead:
+      "Set reminders for special occasions and we'll email you on time.",
     upcoming: "Upcoming",
     open: "Open",
     credits: "Zola Credits",
@@ -58,6 +68,12 @@ const L: Record<
     referralsCaption: "Credits toward shopping — start referring today.",
     copy: "Copy",
     share: "Share",
+
+    compareTitle: "Compare prices across stores",
+    comparePriceLine: "$0.99/month subscription",
+    subscribeCta: "Subscribe — $0.99/mo",
+    benefits:
+      "Compare prices across other stores to save on gifts and everyday buys. We'll surface smart matches for what you're shopping, so you don’t overpay when prices vary.",
   },
   pt: {
     title: "Painel",
@@ -80,6 +96,12 @@ const L: Record<
     referralsCaption: "Créditos para compras — comece a indicar hoje.",
     copy: "Copiar",
     share: "Compartilhar",
+
+    compareTitle: "Compare preços em várias lojas",
+    comparePriceLine: "Assinatura de US$ 0,99/mês",
+    subscribeCta: "Assinar — US$ 0,99/mês",
+    benefits:
+      "Compare preços em outras lojas para economizar em presentes e compras do dia a dia. Mostramos sugestões para o que você procura, evitando pagar mais quando os preços variam.",
   },
   es: {
     title: "Panel",
@@ -102,6 +124,12 @@ const L: Record<
     referralsCaption: "Créditos para compras — empieza a referir hoy.",
     copy: "Copiar",
     share: "Compartir",
+
+    compareTitle: "Compara precios en varias tiendas",
+    comparePriceLine: "Suscripción de US$ 0,99/mes",
+    subscribeCta: "Suscribirse — US$ 0,99/mes",
+    benefits:
+      "Compara precios en otras tiendas para ahorrar en regalos y compras diarias. Te mostramos opciones para lo que buscas, así no pagas de más cuando los precios cambian.",
   },
   fr: {
     title: "Tableau de bord",
@@ -121,9 +149,16 @@ const L: Record<
     credits: "Crédits Zola",
     coming: "Bientôt disponible",
     referralsTitle: "Parrainages",
-    referralsCaption: "Crédits shopping — commencez à parrainer aujourd'hui.",
+    referralsCaption:
+      "Crédits shopping — commencez à parrainer aujourd'hui.",
     copy: "Copier",
     share: "Partager",
+
+    compareTitle: "Comparez les prix entre magasins",
+    comparePriceLine: "Abonnement à 0,99 $/mois",
+    subscribeCta: "S’abonner — 0,99 $/mois",
+    benefits:
+      "Comparez les prix dans d’autres boutiques pour économiser sur les cadeaux et les achats du quotidien. Nous proposons des correspondances pour ce que vous cherchez, afin d’éviter de payer trop cher.",
   },
 };
 
@@ -213,11 +248,42 @@ function DashboardContent() {
           </Link>
         </Card>
 
+        {/* Shop card */}
         <Card>
           <CardTitle>{t.shop}</CardTitle>
+
+          {/* Primary route to /shop */}
           <Link href={withLang("/shop")} style={btnSecondary}>
             {t.browseNow}
           </Link>
+
+          {/* Clean compare block (no lock, no learn-more, no extra button) */}
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontWeight: 700, color: "#111827" }}>{t.compareTitle}</div>
+            <div style={{ fontWeight: 700, color: "#111827" }}>{t.comparePriceLine}</div>
+            <p style={{ marginTop: 8, color: "#374151" }}>{t.benefits}</p>
+          </div>
+
+          {/* Single CTA → Stripe link */}
+          <div style={{ marginTop: 8 }}>
+            <a
+              href={STRIPE_LINK}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                background: "#0f172a",
+                color: "#fff",
+                padding: "8px 12px",
+                borderRadius: 8,
+                textDecoration: "none",
+                display: "inline-block",
+                fontSize: 14,
+                fontWeight: 700,
+              }}
+            >
+              {t.subscribeCta}
+            </a>
+          </div>
         </Card>
 
         <Card>
