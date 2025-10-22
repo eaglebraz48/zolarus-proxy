@@ -1,18 +1,14 @@
 // netlify/functions/stripe-webhook.ts
 import type { Handler } from '@netlify/functions';
-import Stripe from 'stripe';
+import type StripeType from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: '2024-06-20',
-});
-
+// Clients without bundling issues
 const supabase = createClient(
   process.env.SUPABASE_URL as string,
   process.env.SUPABASE_SERVICE_ROLE_KEY as string
 );
-
 const resend = new Resend(process.env.RESEND_API_KEY as string);
 
 // --- simple i18n copy ---
@@ -49,8 +45,18 @@ Pour toute question, répondez simplement à cet e-mail.`,
 
 type LangKey = keyof typeof M;
 
-function pickLang(session: Stripe.Checkout.Session): LangKey {
-  // client_reference_id like "lang:xx"
+// Cache Stripe instance across warm invocations
+let _stripe: StripeType | null = null;
+async function getStripe(): Promise<StripeType> {
+  if (_stripe) return _stripe;
+  const Stripe = (await import('stripe')).default;
+  _stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+    apiVersion: '2024-06-20',
+  }) as unknown as StripeType;
+  return _stripe;
+}
+
+function pickLang(session: StripeType.Checkout.Session): LangKey {
   const ref = session.client_reference_id ?? '';
   const m = /^lang:([a-z]{2})$/i.exec(ref);
   if (m) {
@@ -64,29 +70,26 @@ function pickLang(session: Stripe.Checkout.Session): LangKey {
 
 export const handler: Handler = async (event) => {
   try {
-    // Signature + secret
+    const stripe = await getStripe();
+
     const sig =
       (event.headers['stripe-signature'] as string) ||
       (event.headers['Stripe-Signature'] as string);
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
 
     if (!sig || !webhookSecret) {
-      console.error('Missing Stripe signature or webhook secret');
       return { statusCode: 400, body: 'Missing Stripe signature or webhook secret' };
     }
 
-    // Raw body (respect base64 encoding in Netlify dev)
     const bodyString = event.isBase64Encoded
       ? Buffer.from(event.body || '', 'base64').toString('utf8')
       : (event.body || '');
 
     const stripeEvent = stripe.webhooks.constructEvent(bodyString, sig, webhookSecret);
 
-    // --- handle only what we need for now ---
     if (stripeEvent.type === 'checkout.session.completed') {
-      const session = stripeEvent.data.object as Stripe.Checkout.Session;
+      const session = stripeEvent.data.object as StripeType.Checkout.Session;
 
-      // Identify customer email from Hosted Link / Checkout
       const email =
         session.customer_details?.email ||
         (session.customer_email as string | undefined) ||
@@ -95,15 +98,11 @@ export const handler: Handler = async (event) => {
       const lang = pickLang(session);
       const t = M[lang];
 
-      // Derive a few optional Stripe fields (safe-null)
       const customerId = (session.customer as string) || null;
-      // Checkout session doesn’t include line_items unless expanded;
-      // keep price null unless you expand on the Stripe side later.
       const priceId = null as string | null;
-      const status = 'active'; // on checkout completion for a sub link this is effectively active
+      const status = 'active';
       const periodEnd = null as string | null;
 
-      // 🔄 Write ONLY to stripe_subscriptions (profiles untouched)
       if (email) {
         const { error } = await supabase
           .from('stripe_subscriptions')
@@ -129,7 +128,6 @@ export const handler: Handler = async (event) => {
         console.warn('⚠️ No email on checkout.session.completed; skipping DB write.');
       }
 
-      // ✉️ Send localized receipt via Resend (optional)
       if (email && process.env.RESEND_API_KEY) {
         const amount = ((session.amount_total ?? 0) / 100).toFixed(2);
         const currency = (session.currency || 'usd').toUpperCase();
@@ -147,7 +145,6 @@ export const handler: Handler = async (event) => {
       }
     }
 
-    // success
     return { statusCode: 200, body: JSON.stringify({ ok: true }) };
   } catch (err: any) {
     console.error('Webhook error:', err?.message || err);
