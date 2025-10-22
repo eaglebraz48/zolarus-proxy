@@ -1,5 +1,4 @@
 // app/api/stripe-webhook/route.ts
-import { headers } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
@@ -8,7 +7,7 @@ import { Resend } from 'resend';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Use the API version shown in your Stripe Test events panel
+// Lock to the API version you see in Stripe Test events
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: '2025-09-30.clover',
 });
@@ -63,10 +62,14 @@ function pickLang(session: Stripe.Checkout.Session): LangKey {
 
 export async function POST(req: NextRequest) {
   try {
-    // 1) Raw body exactly as Stripe signed it
+    // Raw body exactly as Stripe signed it
     const body = await req.text();
-    const h = headers(); // sync
-    const signature = h.get('stripe-signature');
+
+    // Use request headers (works across Next versions)
+    const signature = req.headers.get('stripe-signature');
+    const contentType = req.headers.get('content-type');
+    const apiVersionHdr = req.headers.get('stripe-version');
+
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string | undefined;
 
     if (!signature) {
@@ -81,7 +84,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Empty body' }, { status: 400 });
     }
 
-    // 2) Verify signature
+    // Verify signature
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
@@ -90,13 +93,13 @@ export async function POST(req: NextRequest) {
       console.error('❌ Signature verification failed:', {
         msg: err?.message,
         len: body.length,
-        ct: h.get('content-type'),
-        apiVersion: h.get('stripe-version') || null,
+        ct: contentType,
+        apiVersion: apiVersionHdr || null,
       });
       return NextResponse.json({ error: 'signature_verification_failed' }, { status: 400 });
     }
 
-    // 3) Handle events
+    // Handle events we care about
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
 
@@ -159,7 +162,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Optional health endpoints (nice for quick checks)
+// Tiny health check
 export async function GET() {
   return NextResponse.json({ ok: true, expects: 'POST from Stripe' }, { status: 200 });
 }
