@@ -1,17 +1,17 @@
 // netlify/functions/stripe-webhook.ts
 import type { Handler } from '@netlify/functions';
-import type StripeType from 'stripe';
+import type StripeNS from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
-// Clients without bundling issues
+// ---------- Clients (no bundling issues)
 const supabase = createClient(
   process.env.SUPABASE_URL as string,
   process.env.SUPABASE_SERVICE_ROLE_KEY as string
 );
 const resend = new Resend(process.env.RESEND_API_KEY as string);
 
-// --- simple i18n copy ---
+// ---------- i18n copy
 const M = {
   en: {
     subject: 'Thanks for your payment',
@@ -42,53 +42,93 @@ Commande : ${id}
 Pour toute question, répondez simplement à cet e-mail.`,
   },
 } as const;
-
 type LangKey = keyof typeof M;
 
-// Cache Stripe instance across warm invocations
-let _stripe: StripeType | null = null;
-async function getStripe(): Promise<StripeType> {
+// ---------- cache Stripe instance across warm invocations
+let _stripe: StripeNS | null = null;
+async function getStripe(): Promise<StripeNS> {
   if (_stripe) return _stripe;
   const Stripe = (await import('stripe')).default;
   _stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
     apiVersion: '2024-06-20',
-  }) as unknown as StripeType;
+  }) as unknown as StripeNS;
   return _stripe;
 }
 
-function pickLang(session: StripeType.Checkout.Session): LangKey {
+function pickLang(session: StripeNS.Checkout.Session): LangKey {
   const ref = session.client_reference_id ?? '';
   const m = /^lang:([a-z]{2})$/i.exec(ref);
-  if (m) {
-    const code = m[1].toLowerCase();
-    if (code in M) return code as LangKey;
-  }
+  if (m && (m[1].toLowerCase() in M)) return m[1].toLowerCase() as LangKey;
   const metaLang = (session.metadata?.lang || '').toLowerCase();
-  if (metaLang && metaLang in M) return metaLang as LangKey;
-  return 'en';
+  return (metaLang && metaLang in M ? metaLang : 'en') as LangKey;
 }
 
 export const handler: Handler = async (event) => {
+  // Allow browser probe to show health without logging errors
+  if (!event.headers['stripe-signature'] && !event.headers['Stripe-Signature']) {
+    return { statusCode: 400, body: 'Missing Stripe signature' };
+  }
+
   try {
     const stripe = await getStripe();
 
     const sig =
       (event.headers['stripe-signature'] as string) ||
       (event.headers['Stripe-Signature'] as string);
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
 
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
     if (!sig || !webhookSecret) {
+      console.error('Missing signature or secret', { hasSig: Boolean(sig), hasSecret: Boolean(webhookSecret) });
       return { statusCode: 400, body: 'Missing Stripe signature or webhook secret' };
     }
 
-    const bodyString = event.isBase64Encoded
-      ? Buffer.from(event.body || '', 'base64').toString('utf8')
-      : (event.body || '');
+    // 🔥 CRITICAL FIX: Netlify Functions receive the body differently
+    // We need to handle it as a raw string, NOT convert to Buffer
+    let rawBody: string;
+    
+    if (event.isBase64Encoded) {
+      // If Netlify base64-encoded it, decode to UTF-8 string
+      rawBody = Buffer.from(event.body || '', 'base64').toString('utf8');
+    } else {
+      // Use the body as-is (this is what Stripe signed)
+      rawBody = event.body || '';
+    }
 
-    const stripeEvent = stripe.webhooks.constructEvent(bodyString, sig, webhookSecret);
+    // Debug logging (remove after fixing)
+    console.log('Webhook attempt:', {
+      bodyLength: rawBody.length,
+      isBase64: event.isBase64Encoded,
+      hasSig: Boolean(sig),
+      sigPrefix: sig?.substring(0, 20),
+      secretPrefix: webhookSecret?.substring(0, 10),
+      contentType: event.headers['content-type'] || event.headers['Content-Type'],
+    });
+
+    let stripeEvent: StripeNS.Event;
+    try {
+      // Pass rawBody as string, NOT Buffer - Stripe SDK handles conversion
+      stripeEvent = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+    } catch (e: any) {
+      console.error('❌ Signature verification failed:', {
+        msg: e?.message,
+        bodyLen: rawBody.length,
+        bodyPreview: rawBody.substring(0, 100),
+        sigHeader: sig?.substring(0, 50),
+      });
+      return { 
+        statusCode: 400, 
+        body: JSON.stringify({ 
+          error: 'signature_verification_failed',
+          message: e?.message,
+          hint: 'Check webhook secret matches Test mode in Stripe Dashboard'
+        }) 
+      };
+    }
+
+    console.log('✅ Signature verified, event type:', stripeEvent.type);
 
     if (stripeEvent.type === 'checkout.session.completed') {
-      const session = stripeEvent.data.object as StripeType.Checkout.Session;
+      const session = stripeEvent.data.object as StripeNS.Checkout.Session;
 
       const email =
         session.customer_details?.email ||
@@ -131,7 +171,6 @@ export const handler: Handler = async (event) => {
       if (email && process.env.RESEND_API_KEY) {
         const amount = ((session.amount_total ?? 0) / 100).toFixed(2);
         const currency = (session.currency || 'usd').toUpperCase();
-
         try {
           await resend.emails.send({
             from: process.env.RESEND_FROM || 'Zolarus <noreply@arison8.com>',
@@ -139,15 +178,16 @@ export const handler: Handler = async (event) => {
             subject: t.subject,
             text: t.body(amount, currency, session.id),
           });
+          console.log(`✅ Email sent to ${email}`);
         } catch (e: any) {
           console.error('Resend error:', e?.message || e);
         }
       }
     }
 
-    return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+    return { statusCode: 200, body: JSON.stringify({ received: true, type: stripeEvent.type }) };
   } catch (err: any) {
-    console.error('Webhook error:', err?.message || err);
-    return { statusCode: 400, body: JSON.stringify({ error: err?.message || 'bad request' }) };
+    console.error('Webhook error:', err?.message || err, err?.stack);
+    return { statusCode: 500, body: JSON.stringify({ error: err?.message || 'internal_error' }) };
   }
 };

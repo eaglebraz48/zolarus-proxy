@@ -5,7 +5,7 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# Scheduled function (every 5 min, UTC)
+# Scheduled function (every 15 min, UTC)
 [[scheduled.functions]]
   function = "reminders-cron"
   cron = "*/15 * * * *"
@@ -20,6 +20,4 @@
 
 [build.environment]
   NODE_VERSION = "20"
-
-
 
