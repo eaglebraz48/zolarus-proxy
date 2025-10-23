@@ -1,52 +1,21 @@
 'use client';
 
-// REMOVED: export const dynamic = 'force-dynamic';
-// Cannot use with 'use client' - causes build error
-
 import * as React from "react";
 import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import ShopCTA from "@/components/ShopCTA"; // ⬅ added
 
 /* ---------------------- config ---------------------- */
 const STRIPE_LINK = "https://buy.stripe.com/bJeeV563U5yyaJi5uMfAc00";
 
-/* ---------------------- i18n (page-local strings) ---------------------- */
+/* ---------------------- i18n ---------------------- */
 type Lang = "en" | "pt" | "es" | "fr";
 const LANGS: Lang[] = ["en", "pt", "es", "fr"];
 const isLang = (v: string | null): v is Lang => !!v && LANGS.includes(v as Lang);
 
-const L: Record<
-  Lang,
-  {
-    title: string;
-    welcome: string;
-    profile: string;
-    basicInfo: string;
-    setup: string;
-    shop: string;
-    exploreGifts: string;
-    refs: string;
-    browseNow: string;
-    reminders: string;
-    remindersLead: string;
-    upcoming: string;
-    open: string;
-    credits: string;
-    coming: string;
-    referralsTitle: string;
-    referralsCaption: string;
-    copy: string;
-    share: string;
-
-    // Compare block (no lock, no learn more)
-    compareTitle: string;
-    comparePriceLine: string;
-    subscribeCta: string;
-    benefits: string;
-  }
-> = {
+const L: Record<Lang, any> = {
   en: {
     title: "Dashboard",
     welcome: "Welcome,",
@@ -164,7 +133,6 @@ const L: Record<
 
 /* ---------------------------------------------------------------------- */
 
-// Wrapper component with Suspense boundary
 export default function DashboardPage() {
   return (
     <Suspense fallback={<div>Loading...</div>}>
@@ -252,37 +220,19 @@ function DashboardContent() {
         <Card>
           <CardTitle>{t.shop}</CardTitle>
 
-          {/* Primary route to /shop */}
           <Link href={withLang("/shop")} style={btnSecondary}>
             {t.browseNow}
           </Link>
 
-          {/* Clean compare block (no lock, no learn-more, no extra button) */}
           <div style={{ marginTop: 10 }}>
             <div style={{ fontWeight: 700, color: "#111827" }}>{t.compareTitle}</div>
             <div style={{ fontWeight: 700, color: "#111827" }}>{t.comparePriceLine}</div>
             <p style={{ marginTop: 8, color: "#374151" }}>{t.benefits}</p>
           </div>
 
-          {/* Single CTA → Stripe link */}
+          {/* ⬇ replaced Stripe link with ShopCTA */}
           <div style={{ marginTop: 8 }}>
-            <a
-              href={STRIPE_LINK}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                background: "#0f172a",
-                color: "#fff",
-                padding: "8px 12px",
-                borderRadius: 8,
-                textDecoration: "none",
-                display: "inline-block",
-                fontSize: 14,
-                fontWeight: 700,
-              }}
-            >
-              {t.subscribeCta}
-            </a>
+            <ShopCTA />
           </div>
         </Card>
 
@@ -373,7 +323,6 @@ function DashboardContent() {
 }
 
 /* -------------------------- tiny UI helpers -------------------------- */
-
 function Card({ children }: { children: React.ReactNode }) {
   return (
     <div

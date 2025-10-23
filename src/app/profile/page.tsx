@@ -5,16 +5,30 @@ import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 
-/* ---- language (consistent with /referrals and /reminders) ---- */
+/* ---- language handling (reads from URL first, then cookie/localStorage) ---- */
 type Lang = "en" | "pt" | "es" | "fr";
 function getLang(): Lang {
-  const ck = document.cookie.match(/(?:^|;)\s*zola_lang=([^;]+)/);
+  const fromQuery =
+    typeof window !== "undefined"
+      ? (new URLSearchParams(window.location.search).get("lang") as Lang | null)
+      : null;
+
+  const ck =
+    typeof document !== "undefined"
+      ? document.cookie.match(/(?:^|;)\s*zola_lang=([^;]+)/)
+      : null;
+
   const fromCookie = (ck?.[1] as Lang | undefined) ?? undefined;
-  const fromLocal = (localStorage.getItem("zola_lang") as Lang | null) ?? undefined;
-  const val = fromCookie || fromLocal || "en";
+  const fromLocal =
+    (typeof window !== "undefined"
+      ? (localStorage.getItem("zola_lang") as Lang | null)
+      : null) ?? undefined;
+
+  const val = fromQuery || fromCookie || fromLocal || "en";
   return (["en", "pt", "es", "fr"].includes(val) ? val : "en") as Lang;
 }
 
+/* ---- translations ---- */
 const t: Record<
   Lang,
   {
@@ -79,6 +93,7 @@ const t: Record<
     saved: "Enregistré !",
   },
 };
+
 /* -------------------------------------------------------------- */
 
 type Prof = { full_name: string | null; phone: string | null };
@@ -100,7 +115,7 @@ export default function ProfilePage() {
       const { data } = await supabase.auth.getUser();
       const user = data.user;
       if (!user) {
-        window.location.href = "/sign-in?redirect=/profile";
+        window.location.href = `/sign-in?redirect=/profile&lang=${getLang()}`;
         return;
       }
       setUserId(user.id);
@@ -144,21 +159,29 @@ export default function ProfilePage() {
 
         <form onSubmit={saveProfile} className="mt-8 space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700">{L.fullName}</label>
+            <label className="block text-sm font-medium text-gray-700">
+              {L.fullName}
+            </label>
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
               value={form.full_name ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, full_name: e.target.value }))
+              }
               placeholder="Jane Doe"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">{L.phone}</label>
+            <label className="block text-sm font-medium text-gray-700">
+              {L.phone}
+            </label>
             <input
               className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
               value={form.phone ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, phone: e.target.value }))
+              }
               placeholder={L.phonePH}
             />
           </div>
@@ -173,7 +196,7 @@ export default function ProfilePage() {
             </button>
 
             <Link
-              href="/dashboard"
+              href={`/dashboard?lang=${lang}`}
               className="rounded-lg bg-gray-100 px-5 py-3 font-medium hover:bg-gray-200"
             >
               {L.back}
@@ -183,7 +206,9 @@ export default function ProfilePage() {
           {msg && (
             <div
               className={`rounded-lg px-4 py-3 text-sm ${
-                msg === L.saved ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                msg === L.saved
+                  ? "bg-green-50 text-green-700"
+                  : "bg-red-50 text-red-700"
               }`}
             >
               {msg}

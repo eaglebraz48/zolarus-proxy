@@ -4,14 +4,14 @@ import type StripeNS from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
-// ---------- Clients (no bundling issues)
+/* ---------- clients ---------- */
 const supabase = createClient(
   process.env.SUPABASE_URL as string,
   process.env.SUPABASE_SERVICE_ROLE_KEY as string
 );
 const resend = new Resend(process.env.RESEND_API_KEY as string);
 
-// ---------- i18n copy
+/* ---------- i18n ---------- */
 const M = {
   en: {
     subject: 'Thanks for your payment',
@@ -44,9 +44,9 @@ Pour toute question, répondez simplement à cet e-mail.`,
 } as const;
 type LangKey = keyof typeof M;
 
-// ---------- cache Stripe instance across warm invocations
+/* ---------- stripe (warm cache) ---------- */
 let _stripe: StripeNS | null = null;
-async function getStripe(): Promise<StripeNS> {
+async function stripe(): Promise<StripeNS> {
   if (_stripe) return _stripe;
   const Stripe = (await import('stripe')).default;
   _stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
@@ -63,112 +63,83 @@ function pickLang(session: StripeNS.Checkout.Session): LangKey {
   return (metaLang && metaLang in M ? metaLang : 'en') as LangKey;
 }
 
+/* ---------- db helpers ---------- */
+async function upsertSubscriptionRow(args: {
+  user_id: string;
+  stripe_customer_id: string;
+  stripe_subscription_id: string;
+  status: string;
+  current_period_end: number | null;
+}) {
+  await supabase.from('subscriptions').upsert({
+    user_id: args.user_id,
+    stripe_customer_id: args.stripe_customer_id,
+    stripe_subscription_id: args.stripe_subscription_id,
+    status: args.status,
+    current_period_end: args.current_period_end
+      ? new Date(args.current_period_end * 1000).toISOString()
+      : null,
+  });
+}
+
+/* ---------- handler ---------- */
 export const handler: Handler = async (event) => {
-  // Allow browser probe to show health without logging errors
-  if (!event.headers['stripe-signature'] && !event.headers['Stripe-Signature']) {
-    return { statusCode: 400, body: 'Missing Stripe signature' };
+  const sig =
+    (event.headers['stripe-signature'] as string) ||
+    (event.headers['Stripe-Signature'] as string);
+  const whsec = process.env.STRIPE_WEBHOOK_SECRET as string;
+
+  if (!sig || !whsec) {
+    return { statusCode: 400, body: 'Missing Stripe signature or webhook secret' };
   }
 
   try {
-    const stripe = await getStripe();
+    const s = await stripe();
 
-    const sig =
-      (event.headers['stripe-signature'] as string) ||
-      (event.headers['Stripe-Signature'] as string);
+    // Netlify raw body handling
+    const rawBody = event.isBase64Encoded
+      ? Buffer.from(event.body || '', 'base64').toString('utf8')
+      : (event.body || '');
 
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
-    if (!sig || !webhookSecret) {
-      console.error('Missing signature or secret', { hasSig: Boolean(sig), hasSecret: Boolean(webhookSecret) });
-      return { statusCode: 400, body: 'Missing Stripe signature or webhook secret' };
-    }
-
-    // 🔥 CRITICAL FIX: Netlify Functions receive the body differently
-    // We need to handle it as a raw string, NOT convert to Buffer
-    let rawBody: string;
-    
-    if (event.isBase64Encoded) {
-      // If Netlify base64-encoded it, decode to UTF-8 string
-      rawBody = Buffer.from(event.body || '', 'base64').toString('utf8');
-    } else {
-      // Use the body as-is (this is what Stripe signed)
-      rawBody = event.body || '';
-    }
-
-    // Debug logging (remove after fixing)
-    console.log('Webhook attempt:', {
-      bodyLength: rawBody.length,
-      isBase64: event.isBase64Encoded,
-      hasSig: Boolean(sig),
-      sigPrefix: sig?.substring(0, 20),
-      secretPrefix: webhookSecret?.substring(0, 10),
-      contentType: event.headers['content-type'] || event.headers['Content-Type'],
-    });
-
-    let stripeEvent: StripeNS.Event;
+    let ev: StripeNS.Event;
     try {
-      // Pass rawBody as string, NOT Buffer - Stripe SDK handles conversion
-      stripeEvent = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+      ev = s.webhooks.constructEvent(rawBody, sig, whsec);
     } catch (e: any) {
-      console.error('❌ Signature verification failed:', {
-        msg: e?.message,
-        bodyLen: rawBody.length,
-        bodyPreview: rawBody.substring(0, 100),
-        sigHeader: sig?.substring(0, 50),
-      });
-      return { 
-        statusCode: 400, 
-        body: JSON.stringify({ 
-          error: 'signature_verification_failed',
-          message: e?.message,
-          hint: 'Check webhook secret matches Test mode in Stripe Dashboard'
-        }) 
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'signature_verification_failed', message: e?.message }),
       };
     }
 
-    console.log('✅ Signature verified, event type:', stripeEvent.type);
+    /* ----------------- checkout.session.completed ----------------- */
+    if (ev.type === 'checkout.session.completed') {
+      const session = ev.data.object as StripeNS.Checkout.Session;
 
-    if (stripeEvent.type === 'checkout.session.completed') {
-      const session = stripeEvent.data.object as StripeNS.Checkout.Session;
+      // Require subscription checkout
+      if (session.mode === 'subscription' && session.subscription && session.customer) {
+        // We must have stored the Supabase user id in metadata when creating the session
+        const userId = session.metadata?.sb_user_id || null;
+        if (userId) {
+          const sub = await s.subscriptions.retrieve(String(session.subscription));
 
+          await upsertSubscriptionRow({
+            user_id: userId,
+            stripe_customer_id: String(session.customer),
+            stripe_subscription_id: sub.id,
+            status: sub.status,
+            current_period_end: sub.current_period_end ?? null,
+          });
+        }
+      }
+
+      // Optional: send email receipt via Resend (best-effort)
       const email =
         session.customer_details?.email ||
         (session.customer_email as string | undefined) ||
         null;
-
-      const lang = pickLang(session);
-      const t = M[lang];
-
-      const customerId = (session.customer as string) || null;
-      const priceId = null as string | null;
-      const status = 'active';
-      const periodEnd = null as string | null;
-
-      if (email) {
-        const { error } = await supabase
-          .from('stripe_subscriptions')
-          .upsert(
-            {
-              email,
-              stripe_customer_id: customerId,
-              stripe_price_id: priceId,
-              stripe_status: status,
-              current_period_end: periodEnd,
-              is_subscriber: true,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'email' }
-          );
-
-        if (error) {
-          console.error('Supabase upsert error:', error.message);
-        } else {
-          console.log(`✅ stripe_subscriptions upserted for ${email}`);
-        }
-      } else {
-        console.warn('⚠️ No email on checkout.session.completed; skipping DB write.');
-      }
-
       if (email && process.env.RESEND_API_KEY) {
+        const lang = pickLang(session);
+        const t = M[lang];
         const amount = ((session.amount_total ?? 0) / 100).toFixed(2);
         const currency = (session.currency || 'usd').toUpperCase();
         try {
@@ -178,16 +149,37 @@ export const handler: Handler = async (event) => {
             subject: t.subject,
             text: t.body(amount, currency, session.id),
           });
-          console.log(`✅ Email sent to ${email}`);
-        } catch (e: any) {
-          console.error('Resend error:', e?.message || e);
+        } catch {
+          /* ignore email errors */
         }
       }
     }
 
-    return { statusCode: 200, body: JSON.stringify({ received: true, type: stripeEvent.type }) };
+    /* ----------------- customer.subscription.* ----------------- */
+    if (ev.type.startsWith('customer.subscription.')) {
+      const sub = ev.data.object as StripeNS.Subscription;
+
+      // Find our user by customer id
+      const { data: row } = await supabase
+        .from('subscriptions')
+        .select('user_id')
+        .eq('stripe_customer_id', String(sub.customer))
+        .maybeSingle();
+
+      const userId = row?.user_id || (sub.metadata?.sb_user_id as string | undefined);
+      if (userId) {
+        await upsertSubscriptionRow({
+          user_id: userId,
+          stripe_customer_id: String(sub.customer),
+          stripe_subscription_id: sub.id,
+          status: sub.status,
+          current_period_end: sub.current_period_end ?? null,
+        });
+      }
+    }
+
+    return { statusCode: 200, body: JSON.stringify({ ok: true, type: ev.type }) };
   } catch (err: any) {
-    console.error('Webhook error:', err?.message || err, err?.stack);
     return { statusCode: 500, body: JSON.stringify({ error: err?.message || 'internal_error' }) };
   }
 };
