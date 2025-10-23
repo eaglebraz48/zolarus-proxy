@@ -1,3 +1,4 @@
+// src/app/shop/page.tsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -7,7 +8,7 @@ import ShopCTA from '@/components/ShopCTA'; // ✅ added
 type Lang = 'en' | 'pt' | 'es' | 'fr';
 const pick = (lang: Lang, obj: Record<string, string>) => obj[lang] ?? obj.en;
 
-// Amazon link builder
+/* -------------------- Amazon link builder (kept) -------------------- */
 function buildAmazonUrl(args: {
   forWhom?: string;
   occasion?: string;
@@ -27,14 +28,27 @@ function buildAmazonUrl(args: {
   return `https://www.amazon.com/s?k=${q}&tag=${encodeURIComponent(tag)}`;
 }
 
+/* ---------------------- Compare-page query helper ---------------------- */
+function buildCompareQuery(forWhom: string, occasion: string, keywords: string) {
+  return [keywords, occasion, forWhom]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/* ====================================================================== */
+
 export default function ShopPage() {
   const sp = useSearchParams();
   const router = useRouter();
 
+  // language passthrough
   const lang = ((sp.get('lang') || 'en').toLowerCase() as Lang) ?? 'en';
   const withLang = (path: string) =>
     `${path}${path.includes('?') ? '&' : '?'}lang=${encodeURIComponent(lang)}`;
 
+  // i18n strings
   const txt = {
     title: pick(lang, { en: 'Zolarus', pt: 'Zolarus', es: 'Zolarus', fr: 'Zolarus' }),
     h2: pick(lang, {
@@ -55,6 +69,20 @@ export default function ShopPage() {
       es: 'Compara precios en varias tiendas — suscripción de US$ 0,99/mes',
       fr: 'Comparez les prix entre magasins — abonnement à 0,99 $/mois',
     }),
+    // ✅ NEW (for compare flow)
+    compareAcross: pick(lang, {
+      en: 'Compare across stores',
+      pt: 'Comparar em várias lojas',
+      es: 'Comparar en varias tiendas',
+      fr: 'Comparer entre boutiques',
+    }),
+    needFilters: pick(lang, {
+      en: 'Add a keyword or filters above to compare.',
+      pt: 'Adicione uma palavra-chave ou filtros acima para comparar.',
+      es: 'Añade una palabra clave o filtros arriba para comparar.',
+      fr: 'Ajoutez un mot-clé ou des filtres ci-dessus pour comparer.',
+    }),
+
     phFor: pick(lang, {
       en: 'for whom (e.g., boyfriend, girlfriend, husband, wife, mom)',
       pt: 'para quem (ex.: namorado, namorada, marido, esposa, mãe)',
@@ -107,6 +135,7 @@ export default function ShopPage() {
   const [min, setMin] = useState('');
   const [max, setMax] = useState('');
 
+  // Fresh flow + URL hydration
   useEffect(() => {
     const isFresh = sp.get('fresh') === '1';
     if (isFresh) {
@@ -126,80 +155,166 @@ export default function ShopPage() {
       const [lo, hi] = urlBudget.split('-');
       setMin(lo || ''); setMax(typeof hi === 'undefined' ? '' : hi);
     } else { setMin('0'); setMax(urlBudget); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sp.toString()]);
 
+  // NEW: auto-forward to /compare if subscriber opened compare and filters exist
+  useEffect(() => {
+    const wantsCompare = sp.get('open') === 'compare';
+    if (!wantsCompare) return;
+    if (hasFilters) {
+      goToCompare();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp.toString(), /* deps that affect hasFilters */]);
+
+  // NEW: navigate to /compare with current inputs
+  function goToCompare() {
+    const q = buildCompareQuery(forWhom, occasion, keywords);
+    const params = new URLSearchParams();
+    params.set('lang', lang);
+    if (q) params.set('keywords', q);
+    if (min) params.set('min', min);
+    if (max) params.set('max', max);
+    router.push(`/compare?${params.toString()}`);
+  }
+
+  // Reset URL if all inputs cleared
   useEffect(() => {
     const allEmpty = !forWhom && !occasion && !keywords && !min && !max;
     if (!allEmpty) return;
     const hasAny = sp.get('for') || sp.get('occasion') || sp.get('keywords') || sp.get('budget');
     if (hasAny) router.replace(withLang('/shop'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forWhom, occasion, keywords, min, max]);
 
   const hasFilters = useMemo(
-    () => Boolean((forWhom || occasion || keywords || min || max).trim?.() ?? (forWhom || occasion || keywords || min || max)),
+    () =>
+      Boolean(
+        (forWhom || occasion || keywords || min || max).trim?.() ??
+          (forWhom || occasion || keywords || min || max)
+      ),
     [forWhom, occasion, keywords, min, max]
   );
 
   const amazonUrl = useMemo(
-    () => (hasFilters ? buildAmazonUrl({ forWhom, occasion, keywords, min: min || undefined, max: max || undefined }) : '#'),
+    () =>
+      hasFilters
+        ? buildAmazonUrl({
+            forWhom,
+            occasion,
+            keywords,
+            min: min || undefined,
+            max: max || undefined,
+          })
+        : '#',
     [hasFilters, forWhom, occasion, keywords, min, max]
   );
 
-  function refreshIdeas() { router.push(withLang('/shop?fresh=1')); }
+  function refreshIdeas() {
+    router.push(withLang('/shop?fresh=1'));
+  }
 
   return (
     <main style={{ maxWidth: 980, margin: '32px auto', padding: '0 16px' }}>
       <h1>{txt.title}</h1>
       <h2 style={{ color: '#d97706', fontWeight: 700 }}>{txt.h2}</h2>
 
-      {/* Compare line + dynamic CTA */}
+      {/* Compare line + dynamic CTA (subscribe/open) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <p style={{ marginTop: 6, color: '#374151', fontWeight: 500, marginBottom: 0 }}>{txt.compare}</p>
-        <ShopCTA size="sm" /> {/* ✅ replaces manual Stripe link */}
+        <ShopCTA size="sm" /> {/* ✅ subscription-aware CTA */}
       </div>
 
       <p>{txt.sub}</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 2.2fr 100px 100px auto', gap: 8, marginTop: 12, alignItems: 'center' }}>
-        <input value={forWhom} onChange={(e) => setForWhom(e.target.value)} placeholder={txt.phFor} />
-        <input value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder={txt.phOccasion} />
-        <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder={txt.phKeywords} />
-        <input value={min} onChange={(e) => setMin(e.target.value.replace(/\D/g, ''))} placeholder={txt.phMin} />
-        <input value={max} onChange={(e) => setMax(e.target.value.replace(/\D/g, ''))} placeholder={txt.phMax} />
+      {/* Inputs row */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1.2fr 1.2fr 2.2fr 100px 100px auto',
+          gap: 8,
+          marginTop: 12,
+          alignItems: 'center',
+        }}
+      >
+        <input value={forWhom} onChange={(e) => setForWhom(e.target.value)} placeholder={txt.phFor} aria-label="for whom" />
+        <input value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder={txt.phOccasion} aria-label="occasion" />
+        <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder={txt.phKeywords} aria-label="keywords" />
+        <input value={min} onChange={(e) => setMin(e.target.value.replace(/\D/g, ''))} placeholder={txt.phMin} aria-label="min price" inputMode="numeric" />
+        <input value={max} onChange={(e) => setMax(e.target.value.replace(/\D/g, ''))} placeholder={txt.phMax} aria-label="max price" inputMode="numeric" />
+
+        {/* Right-side actions */}
         <div style={{ display: 'flex', gap: 8 }}>
-          <a
-            href={hasFilters ? amazonUrl : '#'}
-            target={hasFilters ? '_blank' : undefined}
-            rel={hasFilters ? 'noopener noreferrer' : undefined}
-            style={{
-              background: hasFilters ? '#f59e0b' : '#e5e7eb',
-              color: hasFilters ? '#fff' : '#9ca3af',
-              padding: '8px 12px',
-              borderRadius: 8,
-              textDecoration: 'none',
-              pointerEvents: hasFilters ? 'auto' : 'none',
-            }}
+          {/* 🗑️ Removed old "Get ideas" button */}
+          <button
+            onClick={refreshIdeas}
+            style={{ background: '#0f172a', color: '#fff', padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer' }}
           >
-            {txt.btnIdeas}
-          </a>
-          <button onClick={refreshIdeas} style={{ background: '#0f172a', color: '#fff', padding: '8px 12px', borderRadius: 8, border: 'none' }}>
             {txt.btnTry}
           </button>
         </div>
       </div>
 
-      <p style={{ marginTop: 10 }}>{txt.note}</p>
+      {/* NEW: Compare across stores primary action */}
+      <div style={{ marginTop: 12 }}>
+        {hasFilters ? (
+          <button
+            onClick={goToCompare}
+            style={{
+              background: '#059669',
+              color: '#fff',
+              padding: '10px 14px',
+              borderRadius: 10,
+              border: 'none',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            {txt.compareAcross}
+          </button>
+        ) : (
+          (sp.get('open') === 'compare') && (
+            <div style={{ color: '#6b7280', fontSize: 13 }}>{txt.needFilters}</div>
+          )
+        )}
+      </div>
+
+      {/* Note + existing Amazon helper sections (unchanged) */}
+      <p style={{ marginTop: 10 }}>
+        {pick(lang, {
+          en: "Don’t see this page in your language on Amazon? Most browsers can translate: right-click → Translate.",
+          pt: 'Não vê esta página no seu idioma na Amazon? A maioria dos navegadores traduz: clique direito → Traduzir.',
+          es: '¿No ves esta página en tu idioma en Amazon? La mayoría de los navegadores traducen: clic derecho → Traducir.',
+          fr: 'Vous ne voyez pas cette page en français sur Amazon ? La plupart des navigateurs traduisent : clic droit → Traduire.',
+        })}
+      </p>
 
       {hasFilters && (
         <>
           <h3 style={{ marginTop: 24 }}>{txt.secCore}</h3>
-          <p><a href={amazonUrl} target="_blank">{txt.linkOpen}</a> <a href={amazonUrl} target="_blank">{txt.linkMore}</a></p>
+          <p>
+            <a href={amazonUrl} target="_blank" rel="noopener noreferrer">{txt.linkOpen}</a>{' '}
+            <a href={amazonUrl} target="_blank" rel="noopener noreferrer">{txt.linkMore}</a>
+          </p>
+
           <h3>{txt.secAcc}</h3>
-          <p><a href={amazonUrl} target="_blank">{txt.linkOpen}</a> <a href={amazonUrl} target="_blank">{txt.linkMore}</a></p>
+          <p>
+            <a href={amazonUrl} target="_blank" rel="noopener noreferrer">{txt.linkOpen}</a>{' '}
+            <a href={amazonUrl} target="_blank" rel="noopener noreferrer">{txt.linkMore}</a>
+          </p>
+
           <h3>{txt.secPop}</h3>
-          <p><a href={amazonUrl} target="_blank">{txt.linkOpen}</a> <a href={amazonUrl} target="_blank">{txt.linkMore}</a></p>
+          <p>
+            <a href={amazonUrl} target="_blank" rel="noopener noreferrer">{txt.linkOpen}</a>{' '}
+            <a href={amazonUrl} target="_blank" rel="noopener noreferrer">{txt.linkMore}</a>
+          </p>
+
           <h3>{txt.secSale}</h3>
-          <p><a href={amazonUrl} target="_blank">{txt.linkOpen}</a> <a href={amazonUrl} target="_blank">{txt.linkMore}</a></p>
+          <p>
+            <a href={amazonUrl} target="_blank" rel="noopener noreferrer">{txt.linkOpen}</a>{' '}
+            <a href={amazonUrl} target="_blank" rel="noopener noreferrer">{txt.linkMore}</a>
+          </p>
         </>
       )}
     </main>
