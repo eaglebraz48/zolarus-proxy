@@ -4,29 +4,26 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
-// Run on Node (not edge) and allow dynamic
+// run on Node (not edge)
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/**
- * Stripe client
- * Use the EXACT API version you see on your Stripe Test events page.
- * If unsure, you can remove apiVersion to use your account default.
- */
+/** ---------- Clients ---------- */
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+  // use the EXACT version shown on your Stripe “Test events” page
   apiVersion: '2025-09-30.clover',
 });
 
-// Supabase (requires SERVICE ROLE key)
 const supabase = createClient(
   process.env.SUPABASE_URL as string,
   process.env.SUPABASE_SERVICE_ROLE_KEY as string
 );
 
-// Resend (optional)
-const resend = new Resend(process.env.RESEND_API_KEY as string);
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
 
-// --- i18n copy for the receipt email
+/** ---------- tiny i18n for receipt ---------- */
 const M = {
   en: {
     subject: 'Thanks for your payment',
@@ -67,135 +64,123 @@ function pickLang(session: Stripe.Checkout.Session): LangKey {
   return (metaLang && metaLang in M ? metaLang : 'en') as LangKey;
 }
 
-// ---- Webhook handler
+/** ---------- Webhook ---------- */
 export async function POST(req: NextRequest) {
-  // Entry log (safe; no secrets)
-  console.log('🔔 Stripe webhook hit', {
+  // don’t parse the body — Stripe needs the raw string for signing
+  const body = await req.text();
+  const signature = req.headers.get('stripe-signature');
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string | undefined;
+
+  console.log('🔔 webhook hit', {
     when: new Date().toISOString(),
+    len: body.length,
+    hasSig: !!signature,
     url: req.url,
-    ct: req.headers.get('content-type'),
   });
 
+  if (!signature) {
+    console.error('❌ missing stripe-signature header');
+    return NextResponse.json({ error: 'missing_signature' }, { status: 400 });
+  }
+  if (!webhookSecret) {
+    console.error('❌ STRIPE_WEBHOOK_SECRET not configured');
+    return NextResponse.json({ error: 'missing_webhook_secret' }, { status: 500 });
+  }
+  if (!body) {
+    console.error('❌ empty body');
+    return NextResponse.json({ error: 'empty_body' }, { status: 400 });
+  }
+
+  let event: Stripe.Event;
   try {
-    // Raw body that Stripe signed
-    const body = await req.text();
-    const signature = req.headers.get('stripe-signature');
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string | undefined;
+    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    console.log('✅ signature ok', { type: event.type, id: (event as any).id });
+  } catch (err: any) {
+    console.error('❌ signature verification failed', { msg: err?.message });
+    return NextResponse.json({ error: 'signature_verification_failed' }, { status: 400 });
+  }
 
-    if (!signature) {
-      console.error('❌ Missing Stripe signature header');
-      return NextResponse.json({ error: 'missing_signature' }, { status: 400 });
-    }
-    if (!webhookSecret) {
-      console.error('❌ STRIPE_WEBHOOK_SECRET not configured');
-      return NextResponse.json({ error: 'missing_webhook_secret' }, { status: 500 });
-    }
-    if (!body) {
-      console.error('❌ Empty body');
-      return NextResponse.json({ error: 'empty_body' }, { status: 400 });
-    }
+  // handle only what you need for now
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object as Stripe.Checkout.Session;
 
-    // Verify signature
-    let event: Stripe.Event;
-    try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-      console.log('✅ Signature OK', { type: event.type, eventId: (event as any).id });
-    } catch (err: any) {
-      console.error('❌ Signature verification failed', { msg: err?.message });
-      return NextResponse.json({ error: 'signature_verification_failed' }, { status: 400 });
-    }
+    const email =
+      session.customer_details?.email ||
+      (session.customer_email as string | null) ||
+      null;
 
-    // Handle the one we care about right now
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
+    const stripe_customer_id = (session.customer as string) || null;
+    const stripe_status = session.mode === 'subscription' ? 'active' : 'paid';
 
-      // Email (works for Payment Links & Checkout)
-      const email =
-        session.customer_details?.email ||
-        (session.customer_email as string | null) ||
-        null;
+    // optional / not expanded in this flow
+    const stripe_price_id = null as string | null;
+    const current_period_end = null as string | null;
 
-      // Basic fields we can store without expansions
-      const stripe_customer_id = (session.customer as string) || null;
-      const stripe_status = session.mode === 'subscription' ? 'active' : 'paid';
-      const stripe_price_id = null as string | null; // not expanded here
-      const current_period_end = null as string | null; // not expanded here
-      const is_subscriber = true;
+    console.log('🧾 parsed session', {
+      email,
+      stripe_customer_id,
+      amount_total: session.amount_total,
+      currency: session.currency,
+      mode: session.mode,
+    });
 
-      console.log('🧾 Parsed session', {
-        email,
-        stripe_customer_id,
-        status: stripe_status,
-        amount_total: session.amount_total,
-        currency: session.currency,
-      });
+    if (email) {
+      // table: public.stripe_subscriptions
+      // columns: email, stripe_customer_id, stripe_price_id, stripe_status,
+      //          current_period_end, is_subscriber, updated_at
+      const { data, error } = await supabase
+        .from('stripe_subscriptions')
+        .upsert(
+          {
+            email,
+            stripe_customer_id,
+            stripe_price_id,
+            stripe_status,
+            current_period_end,
+            is_subscriber: true,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'email' } // requires UNIQUE(email)
+        );
 
-      // Upsert → requires UNIQUE(email) on public.stripe_subscriptions(email)
-      if (email) {
-        const payload = {
-          email,
-          stripe_customer_id,
-          stripe_price_id,
-          stripe_status,
-          current_period_end,
-          is_subscriber,
-          updated_at: new Date().toISOString(),
-        };
-
-        const { error, data } = await supabase
-          .from('stripe_subscriptions')
-          .upsert(payload, { onConflict: 'email' });
-
-        if (error) {
-          console.error('❌ Supabase upsert error', {
-            message: error.message,
-            details: (error as any)?.details ?? null,
-            hint: (error as any)?.hint ?? null,
-            code: (error as any)?.code ?? null,
-          });
-        } else {
-          console.log('✅ Supabase upsert SUCCESS', { email, data });
-        }
-
-        // Optional: send a simple receipt
-        if (process.env.RESEND_API_KEY) {
-          const lang = pickLang(session);
-          const t = M[lang];
-          const amount = ((session.amount_total ?? 0) / 100).toFixed(2);
-          const currency = (session.currency || 'usd').toUpperCase();
-
-          try {
-            await resend.emails.send({
-              from: process.env.RESEND_FROM || 'Zolarus <noreply@arison8.com>',
-              to: email,
-              subject: t.subject,
-              text: t.body(amount, currency, session.id),
-            });
-            console.log('✉️ Receipt sent', { email });
-          } catch (e: any) {
-            console.error('❌ Resend error', { msg: e?.message });
-          }
-        }
+      if (error) {
+        console.error('❌ supabase upsert error', {
+          message: error.message,
+          details: (error as any)?.details ?? null,
+          code: (error as any)?.code ?? null,
+        });
       } else {
-        console.warn('⚠️ No email on checkout.session.completed; skipping DB/email.');
+        console.log('✅ supabase upsert success', { email, data });
+      }
+
+      if (resend) {
+        const lang = pickLang(session);
+        const t = M[lang];
+        const amount = ((session.amount_total ?? 0) / 100).toFixed(2);
+        const currency = (session.currency || 'usd').toUpperCase();
+        try {
+          await resend.emails.send({
+            from: process.env.RESEND_FROM || 'Zolarus <noreply@arison8.com>',
+            to: email,
+            subject: t.subject,
+            text: t.body(amount, currency, session.id),
+          });
+          console.log('✉️ receipt sent', { email });
+        } catch (e: any) {
+          console.error('❌ resend error', { msg: e?.message });
+        }
       }
     } else {
-      // Ignore other events for now (still log for traceability)
-      console.log('ℹ️ Ignored event type', {
-        type: (event as any).type,
-        eventId: (event as any).id,
-      });
+      console.warn('⚠️ no email on session; skipping db/email');
     }
-
-    console.log('🏁 Webhook processing completed');
-    return NextResponse.json({ received: true });
-  } catch (err: any) {
-    console.error('💥 Webhook handler error', { msg: err?.message || String(err) });
-    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+  } else {
+    console.log('ℹ️ ignored event', { type: event.type });
   }
+
+  return NextResponse.json({ received: true });
 }
 
-// Health checks for the route
+/** ---------- health check ---------- */
 export async function GET() {
   return NextResponse.json({ ok: true, expects: 'POST from Stripe' }, { status: 200 });
 }
