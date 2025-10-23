@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
 
@@ -16,6 +16,9 @@ const T: Record<
   fr: { open: 'Ouvrir comparateur de prix', subscribe: 'S’abonner — 0,99 $/mois', loading: 'Chargement…', signin: 'Connexion requise' },
 };
 
+// If your compare page is nested (e.g. /shop/compare), change this to '/shop/compare'
+const COMPARE_PATH = '/compare';
+
 function detectLang(): Lang {
   try {
     const url = new URL(window.location.href);
@@ -29,10 +32,20 @@ function detectLang(): Lang {
   }
 }
 
+function deriveMinMaxFromBudget(budget?: string | null) {
+  if (!budget) return { min: '', max: '' };
+  if (budget.includes('-')) {
+    const [lo, hi] = budget.split('-');
+    return { min: lo || '', max: typeof hi === 'undefined' ? '' : hi };
+  }
+  // single number => treat as "under X"
+  return { min: '0', max: budget };
+}
+
 export default function ShopCTA({ size = 'md' }: { size?: 'sm' | 'md' }) {
   const { isActive, loading } = useSubscriptionStatus();
 
-  // 👇 Hydration-safe lang resolution
+  // Hydration-safe lang resolution
   const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<Lang>('en');
   useEffect(() => {
@@ -53,11 +66,41 @@ export default function ShopCTA({ size = 'md' }: { size?: 'sm' | 'md' }) {
     opacity: busy ? 0.7 : 1,
   };
 
-  // While the app is hydrating, render a *stable* placeholder
+  // Build a compare href that forwards current filters.
+  const compareHref = useMemo(() => {
+    if (!mounted) return '#';
+    const url = new URL(window.location.href);
+    const sp = url.searchParams;
+
+    const forWhom = (sp.get('for') || '').trim();
+    const occasion = (sp.get('occasion') || '').trim();
+    const keywords = (sp.get('keywords') || '').trim();
+
+    // Accept either ?budget=… or explicit ?min=…&max=…
+    const budget = sp.get('budget');
+    const explicitMin = (sp.get('min') || '').trim();
+    const explicitMax = (sp.get('max') || '').trim();
+    const { min, max } = explicitMin || explicitMax
+      ? { min: explicitMin, max: explicitMax }
+      : deriveMinMaxFromBudget(budget);
+
+    const next = new URL(COMPARE_PATH, window.location.origin);
+    const qp = next.searchParams;
+    qp.set('lang', lang);
+    if (forWhom) qp.set('for', forWhom);
+    if (occasion) qp.set('occasion', occasion);
+    if (keywords) qp.set('keywords', keywords);
+    if (min) qp.set('min', min);
+    if (max) qp.set('max', max);
+
+    return `${next.pathname}?${qp.toString()}`;
+  }, [mounted, lang]);
+
+  // While hydrating/loading, show stable placeholder
   if (!mounted || loading) {
     return (
       <button style={{ ...common, background: '#e5e7eb', color: '#6b7280' }} disabled>
-        Loading…
+        {T[lang].loading}
       </button>
     );
   }
@@ -65,7 +108,7 @@ export default function ShopCTA({ size = 'md' }: { size?: 'sm' | 'md' }) {
   if (isActive) {
     return (
       <a
-        href={`/shop?open=compare&lang=${lang}`}
+        href={compareHref}
         style={{ ...common, background: '#059669', color: '#fff' }}
       >
         {T[lang].open}
