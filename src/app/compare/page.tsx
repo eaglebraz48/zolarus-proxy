@@ -21,6 +21,7 @@ const T: Record<
     alt4: string;
     alt5: string;
     alt6: string;
+    alt7: string;           // NEW: Temu
     moreTitle: string;
     back: string;
     note: string;
@@ -38,6 +39,7 @@ const T: Record<
     alt4: 'Try Best Buy',
     alt5: 'Try Home Depot',
     alt6: 'View on Shein',
+    alt7: 'View on Temu',
     moreTitle: 'More stores',
     back: 'Back to Shop',
     note: 'Results are based on your keywords; prices and availability can change.',
@@ -54,6 +56,7 @@ const T: Record<
     alt4: 'Tentar na Best Buy',
     alt5: 'Tentar na Home Depot',
     alt6: 'Ver na Shein',
+    alt7: 'Ver na Temu',
     moreTitle: 'Mais lojas',
     back: 'Voltar ao Shop',
     note: 'Os resultados usam suas palavras-chave; preços e estoque podem mudar.',
@@ -70,6 +73,7 @@ const T: Record<
     alt4: 'Probar en Best Buy',
     alt5: 'Probar en Home Depot',
     alt6: 'Ver en Shein',
+    alt7: 'Ver en Temu',
     moreTitle: 'Más tiendas',
     back: 'Volver a Shop',
     note: 'Los resultados usan tus palabras clave; los precios pueden cambiar.',
@@ -86,6 +90,7 @@ const T: Record<
     alt4: 'Essayer Best Buy',
     alt5: 'Essayer Home Depot',
     alt6: 'Voir sur Shein',
+    alt7: 'Voir sur Temu',
     moreTitle: 'Plus de boutiques',
     back: 'Retour à Shop',
     note: 'Résultats basés sur vos mots-clés ; prix et stocks évoluent.',
@@ -104,7 +109,7 @@ function buildQueryParts(sp: URLSearchParams) {
 
   const parts = [kw, occ, who].filter(Boolean);
 
-  // Price-range hint (Amazon parses "price:50-100"; others will just ignore harmless tokens)
+  // Price-range hint (Amazon parses "price:50-100"; others ignore unknown tokens harmlessly)
   if (min && max) parts.push(`price:${min}-${max}`);
   else if (min && !max) parts.push(`price:${min}-`);
   else if (!min && max) parts.push(`under ${max}`);
@@ -196,6 +201,12 @@ function sheinUrl(q: string) {
   return u.toString();
 }
 
+function temuUrl(q: string) {
+  const u = new URL('https://www.temu.com/search_result.html');
+  if (q) u.searchParams.set('keyword', q);
+  return u.toString();
+}
+
 // ---------- page ----------
 
 export default function ComparePage() {
@@ -250,7 +261,7 @@ export default function ComparePage() {
         <div
           style={{
             background: '#F3F4F6',
-            border: '1px solid #E5E7EB',
+            border: '1px solid '#E5E7EB',
             borderRadius: 8,
             padding: '10px 12px',
             color: '#111827',
@@ -305,6 +316,9 @@ export default function ComparePage() {
       <div style={{ display: 'grid', gap: 12 }}>
         <a href={sheinUrl(qEn)} target="_blank" rel="noopener noreferrer" style={{ ...capsule, background: '#fff', color: '#111827' }}>
           {t.alt6}
+        </a>
+        <a href={temuUrl(qEn)} target="_blank" rel="noopener noreferrer" style={{ ...capsule, background: '#fff', color: '#111827' }}>
+          {t.alt7}
         </a>
       </div>
 
