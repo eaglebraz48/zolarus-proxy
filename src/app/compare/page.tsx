@@ -3,8 +3,8 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { buildAffiliateSearchUrl } from '@/lib/amazon';
 
-/* ------------------------------ i18n ------------------------------ */
 type Lang = 'en' | 'pt' | 'es' | 'fr';
 const LANGS: Lang[] = ['en', 'pt', 'es', 'fr'];
 const isLang = (v: string | null): v is Lang => !!v && LANGS.includes(v as Lang);
@@ -14,182 +14,199 @@ const T: Record<
   {
     title: string;
     blurb: string;
+    primary: string;
+    alt1: string;
+    alt2: string;
+    alt3: string;
+    alt4: string;
+    alt5: string;
+    alt6: string;
+    moreTitle: string;
     back: string;
     note: string;
     query: string;
-    groups: { core: string; stretch: string };
-    buttons: {
-      amazon: string;
-      walmart: string;
-      target: string;
-      wayfair: string;
-      bestbuy: string;
-      homedepot: string;
-      shein: string;
-      temu: string;
-    };
   }
 > = {
   en: {
     title: 'Price comparison',
     blurb:
-      "We'll open retailer pages pre-filled with your search. Pick a store to compare current prices.",
+      'We’ll open retailer pages with your filters. Pick one below and compare current prices.',
+    primary: 'Find on Amazon',
+    alt1: 'Try Target',
+    alt2: 'Try Walmart',
+    alt3: 'Try Wayfair',
+    alt4: 'Try Best Buy',
+    alt5: 'Try Home Depot',
+    alt6: 'View on Shein',
+    moreTitle: 'More stores',
     back: 'Back to Shop',
     note: 'Results are based on your keywords; prices and availability can change.',
-    query: 'Query',
-    groups: { core: 'Top stores', stretch: 'More stores' },
-    buttons: {
-      amazon: 'Find on Amazon',
-      walmart: 'Try Walmart',
-      target: 'Try Target',
-      wayfair: 'Try Wayfair',
-      bestbuy: 'Try Best Buy',
-      homedepot: 'Try Home Depot',
-      shein: 'Browse on Shein',
-      temu: 'Browse on Temu',
-    },
+    query: 'Query:',
   },
   pt: {
     title: 'Comparador de preços',
     blurb:
       'Abriremos as páginas das lojas com sua busca preenchida. Escolha uma loja para comparar preços.',
+    primary: 'Ver na Amazon',
+    alt1: 'Tentar na Target',
+    alt2: 'Tentar na Walmart',
+    alt3: 'Tentar na Wayfair',
+    alt4: 'Tentar na Best Buy',
+    alt5: 'Tentar na Home Depot',
+    alt6: 'Ver na Shein',
+    moreTitle: 'Mais lojas',
     back: 'Voltar ao Shop',
     note: 'Os resultados usam suas palavras-chave; preços e estoque podem mudar.',
-    query: 'Busca',
-    groups: { core: 'Lojas principais', stretch: 'Mais lojas' },
-    buttons: {
-      amazon: 'Ver na Amazon',
-      walmart: 'Tentar na Walmart',
-      target: 'Tentar na Target',
-      wayfair: 'Tentar na Wayfair',
-      bestbuy: 'Tentar na Best Buy',
-      homedepot: 'Tentar na Home Depot',
-      shein: 'Ver na Shein',
-      temu: 'Ver no Temu',
-    },
+    query: 'Busca:',
   },
   es: {
     title: 'Comparación de precios',
     blurb:
-      'Abriremos páginas de tiendas con tu búsqueda completa. Elige una tienda para comparar precios.',
+      'Abriremos páginas de tiendas con tu búsqueda. Elige una tienda para comparar precios.',
+    primary: 'Ver en Amazon',
+    alt1: 'Probar en Target',
+    alt2: 'Probar en Walmart',
+    alt3: 'Probar en Wayfair',
+    alt4: 'Probar en Best Buy',
+    alt5: 'Probar en Home Depot',
+    alt6: 'Ver en Shein',
+    moreTitle: 'Más tiendas',
     back: 'Volver a Shop',
-    note: 'Los resultados usan tus palabras clave; los precios y la disponibilidad pueden cambiar.',
-    query: 'Búsqueda',
-    groups: { core: 'Tiendas principales', stretch: 'Más tiendas' },
-    buttons: {
-      amazon: 'Ver en Amazon',
-      walmart: 'Probar en Walmart',
-      target: 'Probar en Target',
-      wayfair: 'Probar en Wayfair',
-      bestbuy: 'Probar en Best Buy',
-      homedepot: 'Probar en Home Depot',
-      shein: 'Ver en Shein',
-      temu: 'Ver en Temu',
-    },
+    note: 'Los resultados usan tus palabras clave; los precios pueden cambiar.',
+    query: 'Consulta:',
   },
   fr: {
     title: 'Comparateur de prix',
     blurb:
-      'Nous ouvrons les pages des boutiques avec votre recherche préremplie. Choisissez un magasin pour comparer.',
+      'Nous ouvrons les pages des boutiques avec votre recherche. Choisissez une boutique pour comparer.',
+    primary: 'Voir sur Amazon',
+    alt1: 'Essayer Target',
+    alt2: 'Essayer Walmart',
+    alt3: 'Essayer Wayfair',
+    alt4: 'Essayer Best Buy',
+    alt5: 'Essayer Home Depot',
+    alt6: 'Voir sur Shein',
+    moreTitle: 'Plus de boutiques',
     back: 'Retour à Shop',
-    note: 'Résultats basés sur vos mots-clés ; prix et stocks peuvent évoluer.',
-    query: 'Requête',
-    groups: { core: 'Boutiques phares', stretch: 'Plus de boutiques' },
-    buttons: {
-      amazon: 'Voir sur Amazon',
-      walmart: 'Essayer Walmart',
-      target: 'Essayer Target',
-      wayfair: 'Essayer Wayfair',
-      bestbuy: 'Essayer Best Buy',
-      homedepot: 'Essayer Home Depot',
-      shein: 'Voir sur Shein',
-      temu: 'Voir sur Temu',
-    },
+    note: 'Résultats basés sur vos mots-clés ; prix et stocks évoluent.',
+    query: 'Requête :',
   },
 };
 
-/* --------------------------- query helpers --------------------------- */
-// Build a clean query from /shop inputs
-function buildQuery(from: URLSearchParams) {
-  const who = (from.get('for') || '').trim();
-  const occ = (from.get('occasion') || '').trim();
-  const kw = (from.get('keywords') || '').trim();
-  const min = (from.get('min') || '').trim();
-  const max = (from.get('max') || '').trim();
+// ---------- query composition & translation ----------
+
+function buildQueryParts(sp: URLSearchParams) {
+  const who = (sp.get('for') || '').trim();
+  const occ = (sp.get('occasion') || '').trim();
+  const kw = (sp.get('keywords') || '').trim();
+  const min = (sp.get('min') || '').trim();
+  const max = (sp.get('max') || '').trim();
+
   const parts = [kw, occ, who].filter(Boolean);
-  const q = parts.join(' ').replace(/\s+/g, ' ').trim();
-  return { q, min, max };
+
+  // Price-range hint (Amazon parses "price:50-100"; others will just ignore harmless tokens)
+  if (min && max) parts.push(`price:${min}-${max}`);
+  else if (min && !max) parts.push(`price:${min}-`);
+  else if (!min && max) parts.push(`under ${max}`);
+
+  const raw = parts.join(' ').replace(/\s+/g, ' ').trim();
+  return { raw, min, max };
 }
 
-/* ------------------------- retailer URL builders ------------------------- */
-/** NOTE: Add affiliate params later (e.g., tag=, campid=) once programs are live. */
+/** minimal dictionary for frequent retail/gifting words */
+const MINI: Record<string, string> = {
+  // PT
+  namorado: 'boyfriend', namorada: 'girlfriend', marido: 'husband', esposa: 'wife',
+  mae: 'mom', mãe: 'mom', aniversario: 'birthday', aniversário: 'birthday',
+  casamento: 'wedding', formatura: 'graduation', academia: 'gym', perfume: 'perfume',
+  relogio: 'watch', relógio: 'watch', ternos: 'suits', roupa: 'clothes',
 
-// Amazon
-function urlAmazon(q: string) {
-  const u = new URL('https://www.amazon.com/s');
-  if (q) u.searchParams.set('k', q);
-  return u.toString();
+  // ES
+  novio: 'boyfriend', novia: 'girlfriend', esposo: 'husband', esposa_es: 'wife',
+  mama: 'mom', mamá: 'mom', cumpleaños: 'birthday', boda: 'wedding',
+  graduación: 'graduation', gimnasio: 'gym', reloj: 'watch', trajes: 'suits',
+
+  // FR
+  'petit ami': 'boyfriend', 'petite amie': 'girlfriend',
+  mari: 'husband', femme: 'wife', maman: 'mom', anniversaire: 'birthday',
+  mariage: 'wedding', diplôme: 'graduation', sport: 'gym', parfum: 'perfume',
+  montre: 'watch', costumes: 'suits',
+};
+
+function normalizeAccents(s: string) {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-// Walmart
-function urlWalmart(q: string) {
-  const u = new URL('https://www.walmart.com/search');
-  if (q) u.searchParams.set('q', q);
-  return u.toString();
+function toEnglish(lang: Lang, text: string) {
+  if (!text || lang === 'en') return text;
+
+  let s = normalizeAccents(text.toLowerCase());
+
+  // phrase-level first
+  s = s.replace(/\bpetite?\s+amie?\b/g, (m) => (m.includes('petite') ? 'girlfriend' : 'boyfriend'));
+
+  // token map
+  s = s
+    .split(/\s+/)
+    .map((w) => {
+      if (lang === 'es' && w === 'esposa') return 'wife';
+      const hit = MINI[w];
+      return hit || w;
+    })
+    .join(' ');
+
+  return s;
 }
 
-// Target
-function urlTarget(q: string) {
+// ---------- retailer URL builders ----------
+
+function targetUrl(q: string) {
   const u = new URL('https://www.target.com/s');
   if (q) u.searchParams.set('searchTerm', q);
   return u.toString();
 }
 
-// Wayfair (furniture / home)
-function urlWayfair(q: string) {
+function walmartUrl(q: string) {
+  const u = new URL('https://www.walmart.com/search');
+  if (q) u.searchParams.set('q', q);
+  return u.toString();
+}
+
+function wayfairUrl(q: string) {
   const u = new URL('https://www.wayfair.com/keyword.php');
   if (q) u.searchParams.set('keyword', q);
   return u.toString();
 }
 
-// Best Buy (electronics)
-function urlBestBuy(q: string) {
+function bestBuyUrl(q: string) {
   const u = new URL('https://www.bestbuy.com/site/searchpage.jsp');
   if (q) u.searchParams.set('st', q);
   return u.toString();
 }
 
-// Home Depot (home improvement)
-function urlHomeDepot(q: string) {
-  const u = new URL('https://www.homedepot.com/s/');
-  // Home Depot accepts /s/<q> path; keep space-to-%20 via encodeURIComponent
-  return q ? `https://www.homedepot.com/s/${encodeURIComponent(q)}` : u.toString();
+function homeDepotUrl(q: string) {
+  // HD mostly uses /s/<query>; keep query param fallback for safety
+  const base = 'https://www.homedepot.com/s/';
+  return q ? `${base}${encodeURIComponent(q)}` : base;
 }
 
-// Shein (fashion / marketplace)
-function urlShein(q: string) {
-  const u = new URL('https://us.shein.com/pse/searchresult');
-  if (q) u.searchParams.set('keyword', q);
+function sheinUrl(q: string) {
+  const u = new URL('https://us.shein.com/pse/');
+  if (q) u.searchParams.set('src_query', q);
   return u.toString();
 }
 
-// Temu (budget marketplace)
-function urlTemu(q: string) {
-  const u = new URL('https://www.temu.com/search_result.html');
-  if (q) u.searchParams.set('search_key', q);
-  return u.toString();
-}
-
-/* ------------------------------- UI ------------------------------- */
+// ---------- page ----------
 
 export default function ComparePage() {
   const sp = useSearchParams();
-
   const lang = (isLang(sp.get('lang')) ? (sp.get('lang') as Lang) : 'en') as Lang;
   const t = T[lang];
-  const { q } = buildQuery(sp);
 
-  // Persist lang for later visits
+  // compose & translate query
+  const { raw } = buildQueryParts(sp);
+  const qEn = toEnglish(lang, raw);
+
   React.useEffect(() => {
     try {
       document.cookie = `zola_lang=${lang};path=/;max-age=31536000`;
@@ -197,31 +214,23 @@ export default function ComparePage() {
     } catch {}
   }, [lang]);
 
-  const section: React.CSSProperties = { marginTop: 18, marginBottom: 8 };
-  const grid: React.CSSProperties = {
-    display: 'grid',
-    gap: 10,
-    gridTemplateColumns: 'repeat(1, minmax(0, 1fr))',
-    maxWidth: 560,
-  };
-  const btnBase: React.CSSProperties = {
+  const capsule: React.CSSProperties = {
     display: 'inline-block',
-    width: '100%',
     padding: '12px 16px',
     borderRadius: 10,
     fontWeight: 800,
     textDecoration: 'none',
     textAlign: 'center',
+    width: '100%',
+    maxWidth: 560,
     border: '2px solid #111827',
-    color: '#111827',
-    background: '#fff',
   };
-  const btnPrimary: React.CSSProperties = {
-    ...btnBase,
-    background: '#111827',
-    color: '#fff',
+
+  const sectionTitle: React.CSSProperties = {
+    fontWeight: 800,
+    marginTop: 18,
+    marginBottom: 8,
   };
-  const subnote: React.CSSProperties = { color: '#6B7280', fontSize: 13, marginTop: 16 };
 
   return (
     <div style={{ maxWidth: 900, margin: '24px auto', padding: '0 16px' }}>
@@ -237,7 +246,7 @@ export default function ComparePage() {
       <h1 style={{ fontWeight: 900, fontSize: 28, marginBottom: 8 }}>{t.title}</h1>
       <p style={{ color: '#374151', marginBottom: 16 }}>{t.blurb}</p>
 
-      {q && (
+      {qEn && (
         <div
           style={{
             background: '#F3F4F6',
@@ -249,46 +258,57 @@ export default function ComparePage() {
             wordBreak: 'break-word',
           }}
         >
-          <span style={{ fontWeight: 700, marginRight: 6 }}>{t.query}:</span>
-          {q}
+          <span style={{ fontWeight: 700, marginRight: 6 }}>{t.query}</span>
+          {qEn}
         </div>
       )}
 
-      {/* Core stores */}
-      <h3 style={section}>{t.groups.core}</h3>
-      <div style={grid}>
-        <a href={urlAmazon(q)} target="_blank" rel="noopener noreferrer" style={btnPrimary}>
-          {t.buttons.amazon}
+      {/* Primary stores */}
+      <div style={{ display: 'grid', gap: 12 }}>
+        {/* AMAZON with AFFILIATE TAG + translated query */}
+        <a
+          href={buildAffiliateSearchUrl({ q: qEn || '', lang })}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            ...capsule,
+            background: '#111827',
+            color: '#fff',
+            borderColor: '#111827',
+          }}
+        >
+          {t.primary}
         </a>
-        <a href={urlTarget(q)} target="_blank" rel="noopener noreferrer" style={btnBase}>
-          {t.buttons.target}
+
+        <a href={targetUrl(qEn)} target="_blank" rel="noopener noreferrer" style={{ ...capsule, background: '#fff', color: '#111827' }}>
+          {t.alt1}
         </a>
-        <a href={urlWalmart(q)} target="_blank" rel="noopener noreferrer" style={btnBase}>
-          {t.buttons.walmart}
+
+        <a href={walmartUrl(qEn)} target="_blank" rel="noopener noreferrer" style={{ ...capsule, background: '#fff', color: '#111827' }}>
+          {t.alt2}
         </a>
-        <a href={urlWayfair(q)} target="_blank" rel="noopener noreferrer" style={btnBase}>
-          {t.buttons.wayfair}
+
+        <a href={wayfairUrl(qEn)} target="_blank" rel="noopener noreferrer" style={{ ...capsule, background: '#fff', color: '#111827' }}>
+          {t.alt3}
         </a>
-        <a href={urlBestBuy(q)} target="_blank" rel="noopener noreferrer" style={btnBase}>
-          {t.buttons.bestbuy}
+
+        <a href={bestBuyUrl(qEn)} target="_blank" rel="noopener noreferrer" style={{ ...capsule, background: '#fff', color: '#111827' }}>
+          {t.alt4}
         </a>
-        <a href={urlHomeDepot(q)} target="_blank" rel="noopener noreferrer" style={btnBase}>
-          {t.buttons.homedepot}
+
+        <a href={homeDepotUrl(qEn)} target="_blank" rel="noopener noreferrer" style={{ ...capsule, background: '#fff', color: '#111827' }}>
+          {t.alt5}
         </a>
       </div>
 
-      {/* Stretch stores (enable/disable as you like) */}
-      <h3 style={section}>{t.groups.stretch}</h3>
-      <div style={grid}>
-        <a href={urlShein(q)} target="_blank" rel="noopener noreferrer" style={btnBase}>
-          {t.buttons.shein}
-        </a>
-        <a href={urlTemu(q)} target="_blank" rel="noopener noreferrer" style={btnBase}>
-          {t.buttons.temu}
+      <h3 style={sectionTitle}>{t.moreTitle}</h3>
+      <div style={{ display: 'grid', gap: 12 }}>
+        <a href={sheinUrl(qEn)} target="_blank" rel="noopener noreferrer" style={{ ...capsule, background: '#fff', color: '#111827' }}>
+          {t.alt6}
         </a>
       </div>
 
-      <p style={subnote}>{t.note}</p>
+      <p style={{ color: '#6B7280', fontSize: 13, marginTop: 16 }}>{t.note}</p>
     </div>
   );
 }
