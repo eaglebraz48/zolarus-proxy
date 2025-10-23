@@ -16,11 +16,10 @@ export default function SignInPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
 
-  // Respect existing query params; default next => /dashboard
-  const next = sp.get('next') || '/dashboard';
-  const lang = sp.get('lang') || 'en';
+  const redirect = sp.get('next') ?? sp.get('redirect') ?? '/dashboard';
+  const lang = (sp.get('lang') ?? 'en').toLowerCase();
 
-  // Load current session, but DO NOT redirect automatically
+  // Load current session (no auto-redirect)
   useEffect(() => {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -40,15 +39,13 @@ export default function SignInPage() {
           ? window.location.origin
           : process.env.NEXT_PUBLIC_SITE_URL || '';
 
-      const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent(
-        next
-      )}&lang=${encodeURIComponent(lang)}`;
+      // 🔁 point to /callback (your actual page), and use a single "redirect" param
+      const emailRedirectTo =
+        `${origin}/callback?redirect=${encodeURIComponent(redirect)}&lang=${encodeURIComponent(lang)}`;
 
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: {
-          emailRedirectTo,
-        },
+        options: { emailRedirectTo },
       });
 
       if (error) throw error;
@@ -59,8 +56,8 @@ export default function SignInPage() {
     }
   }
 
-  async function goDashboard() {
-    router.push(`${next}?lang=${encodeURIComponent(lang)}`);
+  function goDashboard() {
+    router.push(`${redirect}?lang=${encodeURIComponent(lang)}`);
   }
 
   async function signOut() {
@@ -73,9 +70,7 @@ export default function SignInPage() {
     <main style={{ maxWidth: 720, margin: '40px auto', padding: '0 16px' }}>
       <h1 style={{ fontSize: 36, fontWeight: 800, marginBottom: 24 }}>Sign in</h1>
 
-      {/* If we’re still checking the session, keep things steady */}
       {loadingSession ? null : userEmail ? (
-        // Signed in: show friendly notice instead of redirecting
         <div
           style={{
             padding: 16,
@@ -122,7 +117,6 @@ export default function SignInPage() {
           </div>
         </div>
       ) : status === 'sent' ? (
-        // After sending magic link
         <div
           style={{
             padding: 16,
@@ -133,15 +127,12 @@ export default function SignInPage() {
         >
           <p>Check your inbox for a magic link. After you click it, you’ll be sent to your page.</p>
           <p style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
-            Destination: <code>{next}</code>
+            Destination: <code>{redirect}</code>
           </p>
         </div>
       ) : (
-        // Not signed in: show the form
         <form onSubmit={sendMagicLink} style={{ display: 'grid', gap: 12, maxWidth: 520 }}>
-          <label htmlFor="email" style={{ fontWeight: 700 }}>
-            Email
-          </label>
+          <label htmlFor="email" style={{ fontWeight: 700 }}>Email</label>
           <input
             id="email"
             type="email"
@@ -149,11 +140,7 @@ export default function SignInPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            style={{
-              border: '1px solid #cbd5e1',
-              borderRadius: 10,
-              padding: '10px 12px',
-            }}
+            style={{ border: '1px solid #cbd5e1', borderRadius: 10, padding: '10px 12px' }}
           />
 
           <button
@@ -174,11 +161,7 @@ export default function SignInPage() {
             {status === 'sending' ? 'Sending…' : 'Send email'}
           </button>
 
-          {err && (
-            <p style={{ color: '#b91c1c', marginTop: 4 }}>
-              {err}
-            </p>
-          )}
+          {err && <p style={{ color: '#b91c1c', marginTop: 4 }}>{err}</p>}
 
           <a href={`/?lang=${encodeURIComponent(lang)}`} style={{ marginTop: 10 }}>
             ← Back to home

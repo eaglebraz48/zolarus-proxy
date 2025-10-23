@@ -1,14 +1,12 @@
-// src/app/callback/page.tsx
 'use client';
 
-export const dynamic = 'force-dynamic'; // avoid prerendering
+export const dynamic = 'force-dynamic';
 
 import { Suspense, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 export default function CallbackPage() {
-  // ✅ wrap the content in Suspense to satisfy Next 15
   return (
     <Suspense fallback={<main style={{ padding: '2rem', textAlign: 'center' }}>Signing you in…</main>}>
       <CallbackContent />
@@ -21,7 +19,8 @@ function CallbackContent() {
   const sp = useSearchParams();
   const code = sp.get('code');
   const lang = (sp.get('lang') ?? 'en').toLowerCase();
-  const redirect = sp.get('redirect') ?? '/dashboard';
+  // accept either "redirect" or legacy "next"
+  const redirect = sp.get('redirect') ?? sp.get('next') ?? '/dashboard';
   const sentRef = useRef(false);
 
   useEffect(() => {
@@ -29,17 +28,17 @@ function CallbackContent() {
 
     async function handleCallback() {
       try {
-        // 1) If OAuth code is present, exchange it for a session
+        // Exchange code (email magic link or OAuth)
         if (code) {
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) {
             console.error('Auth exchange error:', exchangeError);
-            router.replace('/');
+            router.replace('/sign-in'); // points to the fixed route
             return;
           }
         }
 
-        // 2) Read session
+        // Confirm session exists
         const { data, error } = await supabase.auth.getSession();
         if (error || !data?.session?.user?.email) {
           console.error('No session after callback', error);
@@ -50,14 +49,12 @@ function CallbackContent() {
         const email = data.session.user.email;
         const userId = data.session.user.id;
 
-        // 3) Trigger your welcome email once
+        // Fire welcome email once per browser
         if (!sentRef.current && !cancelled) {
           sentRef.current = true;
-
           const flagKey = `welcome:${userId}`;
           if (!localStorage.getItem(flagKey)) {
             localStorage.setItem(flagKey, String(Date.now()));
-
             try {
               const res = await fetch('/api/email/welcome', {
                 method: 'POST',
@@ -67,8 +64,6 @@ function CallbackContent() {
               if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
                 console.error('Welcome email API failed', { status: res.status, body });
-              } else {
-                console.log('✅ Welcome email triggered from /callback');
               }
             } catch (e) {
               console.error('Welcome email request error', e);
@@ -76,7 +71,6 @@ function CallbackContent() {
           }
         }
 
-        // 4) Redirect into the app
         router.replace(`${redirect}?lang=${lang}`);
       } catch (e) {
         console.error('Callback error', e);
@@ -85,10 +79,8 @@ function CallbackContent() {
     }
 
     handleCallback();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [code, router, lang, redirect]);
 
-  return null; // UI handled by Suspense fallback while we redirect
+  return null;
 }
