@@ -21,7 +21,7 @@ const T: Record<
     alt4: string;
     alt5: string;
     alt6: string;
-    alt7: string;           // NEW: Temu
+    alt7: string; // Temu
     moreTitle: string;
     back: string;
     note: string;
@@ -98,7 +98,7 @@ const T: Record<
   },
 };
 
-// ---------- query composition & translation ----------
+// ---------- query composition ----------
 
 function buildQueryParts(sp: URLSearchParams) {
   const who = (sp.get('for') || '').trim();
@@ -106,61 +106,111 @@ function buildQueryParts(sp: URLSearchParams) {
   const kw = (sp.get('keywords') || '').trim();
   const min = (sp.get('min') || '').trim();
   const max = (sp.get('max') || '').trim();
-
-  const parts = [kw, occ, who].filter(Boolean);
-
-  // Price-range hint (Amazon parses "price:50-100"; others ignore unknown tokens harmlessly)
-  if (min && max) parts.push(`price:${min}-${max}`);
-  else if (min && !max) parts.push(`price:${min}-`);
-  else if (!min && max) parts.push(`under ${max}`);
-
-  const raw = parts.join(' ').replace(/\s+/g, ' ').trim();
-  return { raw, min, max };
+  return { who, occ, kw, min, max };
 }
 
-/** minimal dictionary for frequent retail/gifting words */
-const MINI: Record<string, string> = {
-  // PT
-  namorado: 'boyfriend', namorada: 'girlfriend', marido: 'husband', esposa: 'wife',
-  mae: 'mom', mãe: 'mom', aniversario: 'birthday', aniversário: 'birthday',
-  casamento: 'wedding', formatura: 'graduation', academia: 'gym', perfume: 'perfume',
-  relogio: 'watch', relógio: 'watch', ternos: 'suits', roupa: 'clothes',
-
-  // ES
-  novio: 'boyfriend', novia: 'girlfriend', esposo: 'husband', esposa_es: 'wife',
-  mama: 'mom', mamá: 'mom', cumpleaños: 'birthday', boda: 'wedding',
-  graduación: 'graduation', gimnasio: 'gym', reloj: 'watch', trajes: 'suits',
-
-  // FR
-  'petit ami': 'boyfriend', 'petite amie': 'girlfriend',
-  mari: 'husband', femme: 'wife', maman: 'mom', anniversaire: 'birthday',
-  mariage: 'wedding', diplôme: 'graduation', sport: 'gym', parfum: 'perfume',
-  montre: 'watch', costumes: 'suits',
-};
+// ---------- lightweight translation ----------
 
 function normalizeAccents(s: string) {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-function toEnglish(lang: Lang, text: string) {
-  if (!text || lang === 'en') return text;
+// Common gifting/person words (single tokens + a couple of phrases)
+const MINI_BASE: Record<string, string> = {
+  // PT
+  namorado: 'boyfriend', namorada: 'girlfriend', marido: 'husband', esposa: 'wife',
+  mae: 'mom', mãe: 'mom', aniversario: 'birthday', aniversário: 'birthday',
+  casamento: 'wedding', formatura: 'graduation', academia: 'gym',
+  // ES
+  novio: 'boyfriend', novia: 'girlfriend', esposo: 'husband',
+  mama: 'mom', mamá: 'mom', cumpleaños: 'birthday', boda: 'wedding',
+  graduacion: 'graduation', graduación: 'graduation', gimnasio: 'gym',
+  // FR
+  'petit ami': 'boyfriend', 'petite amie': 'girlfriend',
+  mari: 'husband', femme: 'wife', maman: 'mom', anniversaire: 'birthday',
+  mariage: 'wedding', diplome: 'graduation', diplôme: 'graduation', sport: 'gym',
+};
 
+// Product/keyword terms (broader set)
+const KW_PT: Record<string, string> = {
+  perfume: 'perfume',
+  relogio: 'watch', relógio: 'watch',
+  relógios: 'watches', relogios: 'watches',
+  terno: 'suit', ternos: 'suits',
+  roupa: 'clothes', roupas: 'clothes',
+  sapato: 'shoes', sapatos: 'shoes',
+  bolsa: 'bag', bolsas: 'bags',
+  joias: 'jewelry', joias_f: 'jewelry',
+  maquiagem: 'makeup',
+  eletronicos: 'electronics', eletrônicos: 'electronics',
+  fone: 'headphones', fones: 'headphones',
+};
+
+const KW_ES: Record<string, string> = {
+  perfume: 'perfume',
+  reloj: 'watch', relojes: 'watches',
+  traje: 'suit', trajes: 'suits',
+  ropa: 'clothes',
+  zapatos: 'shoes', zapato: 'shoes',
+  bolso: 'bag', bolsos: 'bags',
+  joyeria: 'jewelry', joyería: 'jewelry',
+  maquillaje: 'makeup',
+  electronica: 'electronics', electrónica: 'electronics',
+  auriculares: 'headphones', cascos: 'headphones',
+};
+
+const KW_FR: Record<string, string> = {
+  parfum: 'perfume',
+  montre: 'watch', montres: 'watches',
+  costume: 'suit', costumes: 'suits',
+  vetement: 'clothes', vêtement: 'clothes', vetements: 'clothes', vêtements: 'clothes',
+  chaussures: 'shoes', chaussure: 'shoes',
+  sac: 'bag', sacs: 'bags',
+  bijoux: 'jewelry',
+  maquillage: 'makeup',
+  electronique: 'electronics', électronique: 'electronics',
+  ecouteurs: 'headphones', écouteurs: 'headphones',
+};
+
+// Normalize → phrase map → token map
+function translateFreeText(lang: Lang, text: string) {
+  if (!text || lang === 'en') return text;
   let s = normalizeAccents(text.toLowerCase());
 
-  // phrase-level first
+  // phrase replacements first
   s = s.replace(/\bpetite?\s+amie?\b/g, (m) => (m.includes('petite') ? 'girlfriend' : 'boyfriend'));
 
-  // token map
-  s = s
-    .split(/\s+/)
-    .map((w) => {
-      if (lang === 'es' && w === 'esposa') return 'wife';
-      const hit = MINI[w];
-      return hit || w;
-    })
-    .join(' ');
+  // token replacements
+  const tokens = s.split(/[\s,;/]+/).filter(Boolean);
+  const out: string[] = [];
 
-  return s;
+  const base = MINI_BASE;
+  const dict =
+    lang === 'pt' ? KW_PT :
+    lang === 'es' ? KW_ES :
+    lang === 'fr' ? KW_FR : {};
+
+  for (const tok of tokens) {
+    // exact match in keyword dict first
+    if (dict[tok]) { out.push(dict[tok]); continue; }
+    // then base dictionary
+    if (base[tok]) { out.push(base[tok]); continue; }
+    // crude plural trim (es/pt/fr common)
+    const dePlural = tok.replace(/(es|s)$/, '');
+    if (dict[dePlural]) { out.push(dict[dePlural]); continue; }
+    if (base[dePlural]) { out.push(base[dePlural]); continue; }
+    // fallback: keep token
+    out.push(tok);
+  }
+  return out.join(' ');
+}
+
+function translateWhoOcc(lang: Lang, who: string, occ: string) {
+  return [translateFreeText(lang, occ), translateFreeText(lang, who)].filter(Boolean).join(' ').trim();
+}
+
+function translateKeywords(lang: Lang, kw: string) {
+  return translateFreeText(lang, kw);
 }
 
 // ---------- retailer URL builders ----------
@@ -190,7 +240,6 @@ function bestBuyUrl(q: string) {
 }
 
 function homeDepotUrl(q: string) {
-  // HD mostly uses /s/<query>; keep query param fallback for safety
   const base = 'https://www.homedepot.com/s/';
   return q ? `${base}${encodeURIComponent(q)}` : base;
 }
@@ -214,9 +263,21 @@ export default function ComparePage() {
   const lang = (isLang(sp.get('lang')) ? (sp.get('lang') as Lang) : 'en') as Lang;
   const t = T[lang];
 
-  // compose & translate query
-  const { raw } = buildQueryParts(sp);
-  const qEn = toEnglish(lang, raw);
+  const { who, occ, kw, min, max } = buildQueryParts(sp);
+
+  // translate each piece
+  const kwEn = translateKeywords(lang, kw);
+  const whoOccEn = translateWhoOcc(lang, who, occ);
+
+  // build final query parts in EN
+  const qParts: string[] = [];
+  if (kwEn) qParts.push(kwEn);
+  if (whoOccEn) qParts.push(whoOccEn);
+  if (min && max) qParts.push(`price:${min}-${max}`);
+  else if (min && !max) qParts.push(`price:${min}-`);
+  else if (!min && max) qParts.push(`under ${max}`);
+
+  const qEn = qParts.join(' ').replace(/\s+/g, ' ').trim();
 
   React.useEffect(() => {
     try {
@@ -261,7 +322,7 @@ export default function ComparePage() {
         <div
           style={{
             background: '#F3F4F6',
-            border: '1px solid '#E5E7EB',
+            border: '1px solid #E5E7EB',
             borderRadius: 8,
             padding: '10px 12px',
             color: '#111827',
@@ -276,7 +337,6 @@ export default function ComparePage() {
 
       {/* Primary stores */}
       <div style={{ display: 'grid', gap: 12 }}>
-        {/* AMAZON with AFFILIATE TAG + translated query */}
         <a
           href={buildAffiliateSearchUrl({ q: qEn || '', lang })}
           target="_blank"
