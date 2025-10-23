@@ -4,48 +4,55 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
+// Run on Node (not edge) and allow dynamic
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Use the API version you see on Stripe's Test events
+/**
+ * Stripe client
+ * Use the EXACT API version you see on your Stripe Test events page.
+ * If unsure, you can remove apiVersion to use your account default.
+ */
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: '2025-09-30.clover',
 });
 
-// Supabase (SERVICE ROLE KEY required)
-const supabaseUrl = process.env.SUPABASE_URL as string;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Supabase (requires SERVICE ROLE key)
+const supabase = createClient(
+  process.env.SUPABASE_URL as string,
+  process.env.SUPABASE_SERVICE_ROLE_KEY as string
+);
 
+// Resend (optional)
 const resend = new Resend(process.env.RESEND_API_KEY as string);
 
-// --- i18n copy
+// --- i18n copy for the receipt email
 const M = {
   en: {
     subject: 'Thanks for your payment',
     body: (amt: string, cur: string, id: string) =>
-`We received your payment of ${amt} ${cur}.
+      `We received your payment of ${amt} ${cur}.
 Order: ${id}
 If you have any questions, just reply to this email.`,
   },
   es: {
     subject: 'Gracias por tu pago',
     body: (amt: string, cur: string, id: string) =>
-`Hemos recibido tu pago de ${amt} ${cur}.
+      `Hemos recibido tu pago de ${amt} ${cur}.
 Pedido: ${id}
 Si tienes preguntas, responde a este correo.`,
   },
   pt: {
     subject: 'Obrigado pelo seu pagamento',
     body: (amt: string, cur: string, id: string) =>
-`Recebemos o seu pagamento de ${amt} ${cur}.
+      `Recebemos o seu pagamento de ${amt} ${cur}.
 Pedido: ${id}
 Se tiver alguma dúvida, basta responder a este e-mail.`,
   },
   fr: {
     subject: 'Merci pour votre paiement',
     body: (amt: string, cur: string, id: string) =>
-`Nous avons reçu votre paiement de ${amt} ${cur}.
+      `Nous avons reçu votre paiement de ${amt} ${cur}.
 Commande : ${id}
 Pour toute question, répondez simplement à cet e-mail.`,
   },
@@ -60,20 +67,17 @@ function pickLang(session: Stripe.Checkout.Session): LangKey {
   return (metaLang && metaLang in M ? metaLang : 'en') as LangKey;
 }
 
+// ---- Webhook handler
 export async function POST(req: NextRequest) {
-  // ---- ENTRY LOGS (don’t leak secrets)
-  console.log('🔔 Webhook hit', {
+  // Entry log (safe; no secrets)
+  console.log('🔔 Stripe webhook hit', {
     when: new Date().toISOString(),
     url: req.url,
     ct: req.headers.get('content-type'),
-    stripeVersionHeader: req.headers.get('stripe-version') || null,
-    hasServiceRole: !!supabaseKey && supabaseKey.length > 20,
-    supabaseHost: (() => {
-      try { return new URL(supabaseUrl).host; } catch { return 'invalid-url'; }
-    })(),
   });
 
   try {
+    // Raw body that Stripe signed
     const body = await req.text();
     const signature = req.headers.get('stripe-signature');
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string | undefined;
@@ -86,11 +90,12 @@ export async function POST(req: NextRequest) {
       console.error('❌ STRIPE_WEBHOOK_SECRET not configured');
       return NextResponse.json({ error: 'missing_webhook_secret' }, { status: 500 });
     }
-    if (!body || body.length === 0) {
+    if (!body) {
       console.error('❌ Empty body');
       return NextResponse.json({ error: 'empty_body' }, { status: 400 });
     }
 
+    // Verify signature
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
@@ -100,67 +105,65 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'signature_verification_failed' }, { status: 400 });
     }
 
+    // Handle the one we care about right now
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
 
-      // Pull fields (works for Payment Links and Checkout)
+      // Email (works for Payment Links & Checkout)
       const email =
         session.customer_details?.email ||
         (session.customer_email as string | null) ||
         null;
 
-      const lang = pickLang(session);
-      const t = M[lang];
-
+      // Basic fields we can store without expansions
       const stripe_customer_id = (session.customer as string) || null;
-      const stripe_subscription_id = (session.subscription as string) || null; // null for one-time
-      const stripe_price_id = null as string | null;                            // not expanded here
       const stripe_status = session.mode === 'subscription' ? 'active' : 'paid';
-      const stripe_current_period_end = null as string | null;
+      const stripe_price_id = null as string | null; // not expanded here
+      const current_period_end = null as string | null; // not expanded here
+      const is_subscriber = true;
 
       console.log('🧾 Parsed session', {
         email,
         stripe_customer_id,
-        stripe_subscription_id,
-        mode: session.mode,
+        status: stripe_status,
         amount_total: session.amount_total,
         currency: session.currency,
       });
 
-      if (!email) {
-        console.warn('⚠️ No email on checkout.session.completed; skipping DB/email.');
-      } else {
-        // Upsert by email — requires UNIQUE(email)
-        const { error } = await supabase
+      // Upsert → requires UNIQUE(email) on public.stripe_subscriptions(email)
+      if (email) {
+        const payload = {
+          email,
+          stripe_customer_id,
+          stripe_price_id,
+          stripe_status,
+          current_period_end,
+          is_subscriber,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error, data } = await supabase
           .from('stripe_subscriptions')
-          .upsert(
-            {
-              email,
-              stripe_customer_id,
-              stripe_subscription_id,
-              stripe_price_id,
-              stripe_status,
-              stripe_current_period_end,
-              is_subscriber: true,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'email' }
-          );
+          .upsert(payload, { onConflict: 'email' });
 
         if (error) {
           console.error('❌ Supabase upsert error', {
             message: error.message,
-            details: (error as any).details || null,
-            hint:    (error as any).hint || null,
-            code:    (error as any).code || null,
+            details: (error as any)?.details ?? null,
+            hint: (error as any)?.hint ?? null,
+            code: (error as any)?.code ?? null,
           });
         } else {
-          console.log('✅ Supabase upsert SUCCESS', { email });
+          console.log('✅ Supabase upsert SUCCESS', { email, data });
         }
 
+        // Optional: send a simple receipt
         if (process.env.RESEND_API_KEY) {
+          const lang = pickLang(session);
+          const t = M[lang];
           const amount = ((session.amount_total ?? 0) / 100).toFixed(2);
           const currency = (session.currency || 'usd').toUpperCase();
+
           try {
             await resend.emails.send({
               from: process.env.RESEND_FROM || 'Zolarus <noreply@arison8.com>',
@@ -173,12 +176,18 @@ export async function POST(req: NextRequest) {
             console.error('❌ Resend error', { msg: e?.message });
           }
         }
+      } else {
+        console.warn('⚠️ No email on checkout.session.completed; skipping DB/email.');
       }
     } else {
-      // Not the event we care about — still useful to see
-      console.log('ℹ️ Ignored event type', { type: (event as any).type });
+      // Ignore other events for now (still log for traceability)
+      console.log('ℹ️ Ignored event type', {
+        type: (event as any).type,
+        eventId: (event as any).id,
+      });
     }
 
+    console.log('🏁 Webhook processing completed');
     return NextResponse.json({ received: true });
   } catch (err: any) {
     console.error('💥 Webhook handler error', { msg: err?.message || String(err) });
@@ -186,7 +195,10 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// Health checks for the route
 export async function GET() {
   return NextResponse.json({ ok: true, expects: 'POST from Stripe' }, { status: 200 });
 }
-export async function HEAD() { return new Response(null, { status: 200 }); }
+export async function HEAD() {
+  return new Response(null, { status: 200 });
+}
