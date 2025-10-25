@@ -1,10 +1,20 @@
+// src/app/sign-in/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import AssistantAvatar from '@/components/AssistantAvatar';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 type Status = 'idle' | 'sending' | 'sent' | 'error';
+
+function toDestWithLang(dest: string | null | undefined, lang: string) {
+  const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+  const decoded = decodeURIComponent(dest || '/dashboard');
+  const url = new URL(decoded, base);
+  url.searchParams.set('lang', lang);
+  return url.pathname + (url.search ? url.search : '');
+}
 
 export default function SignInPage() {
   const router = useRouter();
@@ -16,10 +26,39 @@ export default function SignInPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
 
-  const redirect = sp.get('next') ?? sp.get('redirect') ?? '/dashboard';
+  const redirectRaw = sp.get('next') ?? sp.get('redirect') ?? '/dashboard';
   const lang = (sp.get('lang') ?? 'en').toLowerCase();
 
-  // Load current session (no auto-redirect)
+  // If a magic-link lands here with ?code=..., exchange ONCE then leave.
+  const code = sp.get('code') || sp.get('token_hash');
+  const exchangedRef = useRef(false);
+  useEffect(() => {
+    (async () => {
+      if (!code || exchangedRef.current) return;
+      exchangedRef.current = true;
+      try {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (!error) {
+          // clean URL so refresh doesn't re-trigger
+          try {
+            const clean = new URL(window.location.href);
+            clean.searchParams.delete('code');
+            clean.searchParams.delete('token_hash');
+            clean.searchParams.delete('type');
+            window.history.replaceState({}, '', clean.toString());
+          } catch {}
+          router.replace(toDestWithLang(redirectRaw, lang));
+          return;
+        }
+        console.error('exchangeCodeForSession failed:', error);
+      } catch (e) {
+        console.error('exchange exception:', e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
+
+  // Load current session (NO auto-redirect here to avoid loops).
   useEffect(() => {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -32,16 +71,14 @@ export default function SignInPage() {
     e.preventDefault();
     setStatus('sending');
     setErr(null);
-
     try {
       const origin =
         typeof window !== 'undefined'
           ? window.location.origin
-          : process.env.NEXT_PUBLIC_SITE_URL || '';
+          : (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000');
 
-      // 🔁 point to /callback (your actual page), and use a single "redirect" param
       const emailRedirectTo =
-        `${origin}/callback?redirect=${encodeURIComponent(redirect)}&lang=${encodeURIComponent(lang)}`;
+        `${origin}/callback?redirect=${encodeURIComponent(redirectRaw)}&lang=${encodeURIComponent(lang)}`;
 
       const { error } = await supabase.auth.signInWithOtp({
         email,
@@ -54,10 +91,6 @@ export default function SignInPage() {
       setErr(e?.message ?? 'Failed to send magic link.');
       setStatus('error');
     }
-  }
-
-  function goDashboard() {
-    router.push(`${redirect}?lang=${encodeURIComponent(lang)}`);
   }
 
   async function signOut() {
@@ -87,7 +120,7 @@ export default function SignInPage() {
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
-              onClick={goDashboard}
+              onClick={() => router.replace(toDestWithLang(redirectRaw, lang))}
               style={{
                 background: '#0f172a',
                 color: '#fff',
@@ -127,7 +160,7 @@ export default function SignInPage() {
         >
           <p>Check your inbox for a magic link. After you click it, you’ll be sent to your page.</p>
           <p style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
-            Destination: <code>{redirect}</code>
+            Destination: <code>{decodeURIComponent(redirectRaw)}</code>
           </p>
         </div>
       ) : (
@@ -142,7 +175,6 @@ export default function SignInPage() {
             placeholder="you@example.com"
             style={{ border: '1px solid #cbd5e1', borderRadius: 10, padding: '10px 12px' }}
           />
-
           <button
             type="submit"
             disabled={status === 'sending'}
@@ -160,9 +192,7 @@ export default function SignInPage() {
           >
             {status === 'sending' ? 'Sending…' : 'Send email'}
           </button>
-
           {err && <p style={{ color: '#b91c1c', marginTop: 4 }}>{err}</p>}
-
           <a href={`/?lang=${encodeURIComponent(lang)}`} style={{ marginTop: 10 }}>
             ← Back to home
           </a>

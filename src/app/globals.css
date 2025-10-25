@@ -3,17 +3,56 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Small polish */
+/* Theme vars */
 :root {
   --z-violet: 110 40 217; /* #6d28d9 */
+  --z-bg-dark: #0a0f1c;
 }
 
-.btn-primary {
-  @apply inline-flex items-center gap-2 rounded-full bg-violet-600 px-4 py-2 text-white font-semibold hover:bg-violet-700 transition;
+/* ----- Base reset (plain CSS, no @apply) ----- */
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: var(--z-bg-dark);
+  color: #fff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: Inter, system-ui, sans-serif;
 }
-.card {
-  @apply rounded-2xl border shadow-sm p-5 bg-white;
+
+/* Smooth color transitions (optional nicety) */
+* { transition: color .2s, background-color .2s, border-color .2s; }
+
+/* ----- Tailwind-powered utilities must live in a layer ----- */
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-full bg-violet-600 px-4 py-2
+           text-white font-semibold hover:bg-violet-700 active:bg-violet-800
+           focus:outline-none focus:ring-2 focus:ring-violet-400;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 rounded-full border border-white/30
+           bg-white/10 px-4 py-2 text-white font-medium hover:bg-white/20
+           active:bg-white/25 focus:outline-none focus:ring-2 focus:ring-white/40;
+  }
+
+  .card {
+    @apply rounded-2xl border border-white/10 shadow-lg bg-white/5 backdrop-blur-sm p-5 text-white;
+  }
+
+  .link {
+    @apply text-cyan-400 hover:text-cyan-300 hover:underline;
+  }
+
+  /* Welcome page helpers */
+  .hero-frame { @apply rounded-[2.5rem] p-1 bg-gradient-to-b from-cyan-500/30 to-cyan-400/10; }
+  .hero-inner { @apply rounded-[2rem] bg-black/40 backdrop-blur-xl border border-white/10 shadow-[0_0_40px_rgba(0,200,255,0.25)]; }
+
+  .glow-text { text-shadow: 0 0 10px rgba(0,219,255,.35), 0 0 30px rgba(0,219,255,.25); }
 }
-.link {
-  @apply text-violet-700 hover:underline;
-}
+
+/* Optional fade-in */
+@keyframes fadeIn { from {opacity:0; transform:translateY(10px)} to {opacity:1; transform:translateY(0)} }
+.fade-in { animation: fadeIn .7s ease-out forwards; }

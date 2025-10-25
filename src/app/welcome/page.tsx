@@ -1,10 +1,8 @@
-// src/app/page.tsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase'; // ⬅ added
 
 type Lang = 'en' | 'pt' | 'es' | 'fr';
 
@@ -47,21 +45,6 @@ function setStoredLang(lang: Lang) {
 export default function WelcomePage() {
   const [lang, setLang] = useState<Lang | undefined>(undefined);
 
-  // ⬇ added: auth state for gating the dashboard button
-  const [authed, setAuthed] = useState<boolean | null>(null);
-  useEffect(() => {
-    let on = true;
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (on) setAuthed(!!data.session);
-    })();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
-      setAuthed(!!s);
-    });
-    return () => { on = false; subscription?.unsubscribe(); };
-  }, []);
-  // ⬆ end added
-
   useEffect(() => {
     const stored = getStoredLang();
     if (stored) return setLang(stored);
@@ -76,7 +59,6 @@ export default function WelcomePage() {
   );
 
   const t = ctas[lang ?? 'en'];
-  const activeLang = lang ?? 'en';
 
   return (
     <main
@@ -136,23 +118,18 @@ export default function WelcomePage() {
         </div>
 
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          {/* Sign in (carries next=/dashboard and current lang) */}
           <Link
-            href={{ pathname: '/sign-in', query: { next: '/dashboard', lang: activeLang } }}
+            href="/sign-in"
             className="px-7 py-3 rounded-2xl border border-cyan-300/40 bg-cyan-500/15 hover:bg-cyan-500/25 transition shadow-[0_0_20px_rgba(0,200,255,0.25)]"
           >
             {t.signIn}
           </Link>
-
-          {/* Show dashboard button only when authenticated */}
-          {authed ? (
-            <Link
-              href={{ pathname: '/dashboard', query: { lang: activeLang } }}
-              className="px-7 py-3 rounded-2xl border border-white/15 bg-white/10 hover:bg-white/20 transition"
-            >
-              {t.dash}
-            </Link>
-          ) : null}
+          <Link
+            href="/dashboard"
+            className="px-7 py-3 rounded-2xl border border-white/15 bg-white/10 hover:bg-white/20 transition"
+          >
+            {t.dash}
+          </Link>
         </div>
 
         <div className="mt-8 flex items-center gap-2 text-sm text-white/70">

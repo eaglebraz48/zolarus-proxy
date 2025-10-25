@@ -1,10 +1,11 @@
 // src/components/ChatWidget.tsx
-// Zolarus Assistant with memory read/write (Supabase) + robust shopping parser
+// Zolarus Assistant with memory read/write (Supabase) + robust shopping parser + branded avatar
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import AssistantAvatar from '@/components/AssistantAvatar'; // ← avatar
 
 type Msg = { role: 'bot' | 'user'; text: string };
 type Lang = 'en' | 'pt' | 'es' | 'fr';
@@ -444,7 +445,9 @@ export default function ChatWidget({ email }: { email?: string | null }) {
         background: '#fff',
         border: '1px solid #e2e8f0',
         borderRadius: 12,
-        boxShadow: '0 16px 40px rgba(2,6,23,.18)',
+        // CHANGED: add subtle cyan glow to match brand
+        boxShadow:
+          '0 16px 40px rgba(2,6,23,.18), 0 0 22px rgba(0, 220, 255, 0.24)',
         display: 'flex',
         flexDirection: 'column',
         zIndex: 50,
@@ -459,9 +462,11 @@ export default function ChatWidget({ email }: { email?: string | null }) {
           alignItems: 'center',
           justifyContent: 'space-between',
           fontWeight: 700,
+          minHeight: 56, // give avatar room
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <AssistantAvatar size={44} /> {/* CHANGED: bigger & clearer */}
           <span>Zolarus Assistant</span>
           {debug && <span style={{ fontSize: 11, color: '#64748b' }}>mem {memCount}{lastShop ? ' · resume' : ''}</span>}
         </div>
@@ -477,25 +482,40 @@ export default function ChatWidget({ email }: { email?: string | null }) {
       {/* messages */}
       <div
         ref={listRef}
-        style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}
+        style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}
       >
-        {msgs.map((m, i) => (
-          <div
-            key={i}
-            style={{
-              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-              background: m.role === 'user' ? '#0f172a' : '#f8fafc',
-              color: m.role === 'user' ? '#fff' : '#0f172a',
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              padding: '8px 10px',
-              maxWidth: '85%',
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {m.text}
-          </div>
-        ))}
+        {msgs.map((m, i) => {
+          const isUser = m.role === 'user';
+          return (
+            <div
+              key={i}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+                alignSelf: isUser ? 'flex-end' : 'stretch',
+                justifyContent: isUser ? 'flex-end' : 'flex-start',
+              }}
+            >
+              {/* bot avatar on the left of messages */}
+              {!isUser && <AssistantAvatar size={24} glow={false} bordered />}
+
+              <div
+                style={{
+                  background: isUser ? '#0f172a' : '#f8fafc',
+                  color: isUser ? '#fff' : '#0f172a',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 10,
+                  padding: '8px 10px',
+                  maxWidth: '85%',
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                {m.text}
+              </div>
+            </div>
+          );
+        })}
 
         {/* quick suggestions */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>

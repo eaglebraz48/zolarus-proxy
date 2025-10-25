@@ -1,13 +1,154 @@
+//shop/page.tsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image'; // NEW
 import { useSearchParams, useRouter } from 'next/navigation';
 import ShopCTA from '@/components/ShopCTA';
 
 type Lang = 'en' | 'pt' | 'es' | 'fr';
 const pick = (lang: Lang, obj: Record<string, string>) => obj[lang] ?? obj.en;
 
-// Amazon link builder
+/* -------------------------------------------------------
+   Normalize user terms to ENGLISH for store searches.
+   UI language is NOT affected.
+------------------------------------------------------- */
+function normalizeToEnglish(input?: string, lang?: Lang): string {
+  if (!input) return '';
+
+  // strip accents, lowercase
+  let s = input
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+
+  // phrase-level maps first (so "roupa de frio" → "winter clothes")
+  const phraseMaps: Record<Lang, Record<string, string>> = {
+    en: {},
+    pt: {
+      'roupa de frio': 'winter clothes',
+      'roupas de frio': 'winter clothes',
+      'dia dos namorados': 'valentine',
+    },
+    es: {
+      'ropa de invierno': 'winter clothes',
+      'san valentin': 'valentine',
+    },
+    fr: {
+      'vetements dhiver': 'winter clothes',
+      'vêtements d’hiver': 'winter clothes',
+      'saint-valentin': 'valentine',
+    },
+  };
+
+  // single-word maps
+  const wordMaps: Record<Lang, Record<string, string>> = {
+    en: {},
+    pt: {
+      namorado: 'boyfriend',
+      namorada: 'girlfriend',
+      marido: 'husband',
+      esposa: 'wife',
+      mae: 'mom',
+      mae2: 'mom',
+      pai: 'dad',
+      amigo: 'friend',
+      amiga: 'friend',
+      filho: 'son',
+      filha: 'daughter',
+      aniversario: 'birthday',
+      casamento: 'wedding',
+      formatura: 'graduation',
+      natal: 'christmas',
+      academia: 'gym',
+      roupa: 'clothes',
+      roupas: 'clothes',
+      sapato: 'shoes',
+      sapatos: 'shoes',
+      bolsa: 'bag',
+      joias: 'jewelry',
+      joias2: 'jewelry',
+      relogio: 'watch',
+      casaco: 'jacket',
+    },
+    es: {
+      novio: 'boyfriend',
+      novia: 'girlfriend',
+      esposo: 'husband',
+      esposa: 'wife',
+      mama: 'mom',
+      papa: 'dad',
+      amigo: 'friend',
+      amiga: 'friend',
+      hijo: 'son',
+      hija: 'daughter',
+      cumpleanos: 'birthday',
+      boda: 'wedding',
+      graduacion: 'graduation',
+      navidad: 'christmas',
+      gimnasio: 'gym',
+      ropa: 'clothes',
+      zapatos: 'shoes',
+      bolso: 'bag',
+      joyeria: 'jewelry',
+      reloj: 'watch',
+      chaqueta: 'jacket',
+    },
+    fr: {
+      mari: 'husband',
+      epouse: 'wife',
+      mere: 'mother',
+      maman: 'mom',
+      papa: 'dad',
+      ami: 'friend',
+      amie: 'friend',
+      fils: 'son',
+      fille: 'daughter',
+      anniversaire: 'birthday',
+      mariage: 'wedding',
+      diplomes: 'graduation',
+      noel: 'christmas',
+      gymnase: 'gym',
+      'salle de sport': 'gym',
+      vetement: 'clothes',
+      vetements: 'clothes',
+      chaussures: 'shoes',
+      sac: 'bag',
+      joaillerie: 'jewelry',
+      bijou: 'jewelry',
+      bijoux: 'jewelry',
+      montre: 'watch',
+      veste: 'jacket',
+      copine: 'girlfriend',
+      'petit ami': 'boyfriend',
+    },
+  };
+
+  // apply phrase maps
+  const pmap = phraseMaps[lang ?? 'en'];
+  for (const [k, v] of Object.entries(pmap)) {
+    const re = new RegExp(`\\b${escapeRegExp(k)}\\b`, 'g');
+    s = s.replace(re, v);
+  }
+
+  // apply word maps per token
+  const wmap = wordMaps[lang ?? 'en'];
+  const tokens = s.split(/\s+/).map((t) => {
+    if (lang === 'pt' && (t === 'mae' || t === 'mãe')) return 'mom';
+    if (lang === 'pt' && (t === 'joias' || t === 'jóias')) return 'jewelry';
+    if (lang === 'es' && (t === 'cumpleanos' || t === 'cumpleaños')) return 'birthday';
+    if (lang === 'fr' && (t === 'diplomes' || t === 'diplômes')) return 'graduation';
+    return wmap[t] || t;
+  });
+
+  return tokens.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Amazon link builder (unchanged)
 function buildAmazonUrl(args: {
   forWhom?: string;
   occasion?: string;
@@ -96,10 +237,9 @@ export default function ShopPage() {
     linkMore: pick(lang, {
       en: 'See more on my Amazon page',
       pt: 'Ver mais na minha página da Amazon',
-      es: 'Ver más en mi página de Amazon',
+      es: 'Ver más na mi página de Amazon',
       fr: 'Voir plus sur ma page Amazon',
     }),
-    // Live-update tip
     liveTipTitle: pick(lang, {
       en: 'Live-updating links',
       pt: 'Links atualizam ao digitar',
@@ -127,11 +267,10 @@ export default function ShopPage() {
   const [min, setMin] = useState('');
   const [max, setMax] = useState('');
 
-  // Tip + SR-announce
   const [showLiveTip, setShowLiveTip] = useState(true);
   const [announce, setAnnounce] = useState('');
 
-  // Initialize from URL
+  // Init from URL
   useEffect(() => {
     const isFresh = sp.get('fresh') === '1';
     if (isFresh) {
@@ -170,7 +309,7 @@ export default function ShopPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sp.toString()]);
 
-  // Keep URL in sync with inputs (debounced) — so ShopCTA can read latest filters
+  // Sync URL (debounced)
   useEffect(() => {
     const t = setTimeout(() => {
       const params = new URLSearchParams();
@@ -183,204 +322,231 @@ export default function ShopPage() {
       const qs = params.toString();
       const next = `/shop?${qs}`;
       const current = `/shop?${sp.toString()}`;
-      if (current !== next) router.replace(next); // shallow replace
+      if (current !== next) router.replace(next);
     }, 250);
     return () => clearTimeout(t);
   }, [forWhom, occasion, keywords, min, max, lang, router, sp]);
 
+  // Clean URL if all empty
   useEffect(() => {
     const allEmpty = !forWhom && !occasion && !keywords && !min && !max;
     if (!allEmpty) return;
-    const hasAny = sp.get('for') || sp.get('occasion') || sp.get('keywords') || sp.get('budget') || sp.get('min') || sp.get('max');
+    const hasAny =
+      sp.get('for') ||
+      sp.get('occasion') ||
+      sp.get('keywords') ||
+      sp.get('budget') ||
+      sp.get('min') ||
+      sp.get('max');
     if (hasAny) router.replace(withLang('/shop'));
   }, [forWhom, occasion, keywords, min, max]);
 
   const hasFilters = useMemo(
     () =>
       Boolean(
-        (forWhom || occasion || keywords || min || max).trim?.() ?? (forWhom || occasion || keywords || min || max)
+        (forWhom || occasion || keywords || min || max).trim?.() ??
+          (forWhom || occasion || keywords || min || max),
       ),
-    [forWhom, occasion, keywords, min, max]
+    [forWhom, occasion, keywords, min, max],
   );
 
-  const amazonUrl = useMemo(
-    () =>
-      hasFilters
-        ? buildAmazonUrl({
-            forWhom,
-            occasion,
-            keywords,
-            min: min || undefined,
-            max: max || undefined,
-          })
-        : '#',
-    [hasFilters, forWhom, occasion, keywords, min, max]
-  );
+  // ✅ Only change: normalize to EN before building store URL
+  const amazonUrl = useMemo(() => {
+    if (!hasFilters) return '#';
+    const nf = normalizeToEnglish(forWhom, lang);
+    const no = normalizeToEnglish(occasion, lang);
+    const nk = normalizeToEnglish(keywords, lang);
+    return buildAmazonUrl({
+      forWhom: nf || undefined,
+      occasion: no || undefined,
+      keywords: nk || undefined,
+      min: min || undefined,
+      max: max || undefined,
+    });
+  }, [hasFilters, forWhom, occasion, keywords, min, max, lang]);
 
-  // Announce “links updated” when inputs change (a11y)
+  // a11y announce
   useEffect(() => {
     const parts = [forWhom, occasion, keywords, min, max].filter(Boolean).join(' ');
     if (parts) setAnnounce(txt.liveSRUpdated);
-  }, [forWhom, occasion, keywords, min, max]); // lang baked into txt
+  }, [forWhom, occasion, keywords, min, max]);
 
   function refreshIdeas() {
     router.push(withLang('/shop?fresh=1'));
   }
 
   return (
-    <main style={{ maxWidth: 980, margin: '32px auto', padding: '0 16px' }}>
-      <h1>{txt.title}</h1>
-      <h2 style={{ color: '#d97706', fontWeight: 700 }}>{txt.h2}</h2>
+    <main className="max-w-5xl mx-auto px-4 md:px-6 py-8">
+      <h1 className="sr-only">{txt.title}</h1>
+
+      {/* NEW: Slim hero strip with horse + vibe */}
+      <section className="mb-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-gradient-to-b from-cyan-50 to-white px-3 py-2">
+        <Image src="/horse-blue.png" alt="" width={34} height={34} priority />
+        <div className="font-extrabold text-slate-900">
+          Find great gifts faster
+        </div>
+        <div className="ml-auto hidden sm:flex items-center gap-2 opacity-90">
+          <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700">Tech</span>
+          <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700">Home</span>
+          <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700">Fashion</span>
+        </div>
+      </section>
+
+      <h2 className="text-xl md:text-2xl font-bold text-amber-600">{txt.h2}</h2>
 
       {/* Compare line + dynamic CTA */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <p style={{ marginTop: 6, color: '#374151', fontWeight: 500, marginBottom: 0 }}>
-          {txt.compare}
-        </p>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <p className="text-slate-600 font-medium m-0">{txt.compare}</p>
         <ShopCTA size="sm" />
       </div>
 
-      <p>{txt.sub}</p>
+      <p className="mt-1 text-slate-700">{txt.sub}</p>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1.2fr 1.2fr 2.2fr 100px 100px auto',
-          gap: 8,
-          marginTop: 12,
-          alignItems: 'center',
-        }}
-      >
-        <input value={forWhom} onChange={(e) => setForWhom(e.target.value)} placeholder={txt.phFor} />
-        <input value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder={txt.phOccasion} />
-        <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder={txt.phKeywords} />
+      {/* Filters row */}
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.2fr_1.2fr_2.2fr_100px_100px_auto] gap-2 items-center">
+        <input
+          value={forWhom}
+          onChange={(e) => setForWhom(e.target.value)}
+          placeholder={txt.phFor}
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
+        />
+        <input
+          value={occasion}
+          onChange={(e) => setOccasion(e.target.value)}
+          placeholder={txt.phOccasion}
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
+        />
+        <input
+          value={keywords}
+          onChange={(e) => setKeywords(e.target.value)}
+          placeholder={txt.phKeywords}
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
+        />
         <input
           value={min}
           onChange={(e) => setMin(e.target.value.replace(/\D/g, ''))}
           placeholder={txt.phMin}
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
         />
         <input
           value={max}
           onChange={(e) => setMax(e.target.value.replace(/\D/g, ''))}
           placeholder={txt.phMax}
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
         />
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="flex gap-2">
           <a
             href={hasFilters ? amazonUrl : '#'}
             target={hasFilters ? '_blank' : undefined}
             rel={hasFilters ? 'noopener noreferrer' : undefined}
-            style={{
-              background: hasFilters ? '#f59e0b' : '#e5e7eb',
-              color: hasFilters ? '#fff' : '#9ca3af',
-              padding: '8px 12px',
-              borderRadius: 8,
-              textDecoration: 'none',
-              pointerEvents: hasFilters ? 'auto' : 'none',
-            }}
+            className={`rounded-xl px-4 py-2 font-semibold transition ${
+              hasFilters
+                ? 'bg-amber-500 text-white hover:bg-amber-600'
+                : 'bg-slate-200 text-slate-400 pointer-events-none'
+            }`}
           >
             {txt.btnIdeas}
           </a>
           <button
             onClick={refreshIdeas}
-            style={{
-              background: '#0f172a',
-              color: '#fff',
-              padding: '8px 12px',
-              borderRadius: 8,
-              border: 'none',
-            }}
+            className="rounded-xl px-4 py-2 font-semibold bg-slate-900 text-white hover:bg-slate-800"
           >
             {txt.btnTry}
           </button>
         </div>
       </div>
 
-      {/* Screen-reader live region */}
-      <div
-        aria-live="polite"
-        style={{ position: 'absolute', left: -9999, width: 1, height: 1, overflow: 'hidden' }}
-      >
+      {/* SR live region */}
+      <div aria-live="polite" className="absolute -left-[9999px] w-px h-px overflow-hidden">
         {announce}
       </div>
 
-      {/* Dismissible “live update” tip */}
+      {/* Dismissible tip */}
       {showLiveTip && (
-        <div
-          style={{
-            marginTop: 10,
-            padding: '10px 12px',
-            borderRadius: 10,
-            background: '#ECFDF5',
-            border: '1px solid #A7F3D0',
-            color: '#065F46',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 10,
-            maxWidth: 780,
-          }}
-        >
-          <div style={{ fontWeight: 800, marginRight: 6 }}>{txt.liveTipTitle}</div>
-          <div style={{ flex: 1 }}>{txt.liveTipBody}</div>
+        <div className="mt-3 flex max-w-3xl items-start gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-emerald-800">
+          <div className="font-extrabold mr-1">{txt.liveTipTitle}</div>
+          <div className="flex-1">{txt.liveTipBody}</div>
           <button
             onClick={() => setShowLiveTip(false)}
-            style={{
-              border: 'none',
-              background: '#10B981',
-              color: '#fff',
-              padding: '6px 10px',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontWeight: 700,
-              whiteSpace: 'nowrap',
-            }}
+            className="whitespace-nowrap rounded-lg bg-emerald-500 px-3 py-1.5 font-bold text-white"
           >
             {txt.liveTipDismiss}
           </button>
         </div>
       )}
 
-      <p style={{ marginTop: 10 }}>{txt.note}</p>
+      <p className="mt-3 text-slate-600">{txt.note}</p>
 
+      {/* Sections with prominent links */}
       {hasFilters && (
-        <>
-          <h3 style={{ marginTop: 24 }}>{txt.secCore}</h3>
-          <p>
-            <a href={amazonUrl} target="_blank">
-              {txt.linkOpen}
-            </a>{' '}
-            <a href={amazonUrl} target="_blank">
-              {txt.linkMore}
-            </a>
-          </p>
-          <h3>{txt.secAcc}</h3>
-          <p>
-            <a href={amazonUrl} target="_blank">
-              {txt.linkOpen}
-            </a>{' '}
-            <a href={amazonUrl} target="_blank">
-              {txt.linkMore}
-            </a>
-          </p>
-          <h3>{txt.secPop}</h3>
-          <p>
-            <a href={amazonUrl} target="_blank">
-              {txt.linkOpen}
-            </a>{' '}
-              <a href={amazonUrl} target="_blank">
-              {txt.linkMore}
-            </a>
-          </p>
-          <h3>{txt.secSale}</h3>
-          <p>
-            <a href={amazonUrl} target="_blank">
-              {txt.linkOpen}
-            </a>{' '}
-            <a href={amazonUrl} target="_blank">
-              {txt.linkMore}
-            </a>
-          </p>
-        </>
+        <div className="mt-6 space-y-6">
+          <Section
+            title={txt.secCore}
+            openText={txt.linkOpen}
+            moreText={txt.linkMore}
+            href={amazonUrl}
+          />
+          <Section
+            title={txt.secAcc}
+            openText={txt.linkOpen}
+            moreText={txt.linkMore}
+            href={amazonUrl}
+          />
+          <Section
+            title={txt.secPop}
+            openText={txt.linkOpen}
+            moreText={txt.linkMore}
+            href={amazonUrl}
+          />
+          <Section
+            title={txt.secSale}
+            openText={txt.linkOpen}
+            moreText={txt.linkMore}
+            href={amazonUrl}
+          />
+        </div>
       )}
     </main>
+  );
+}
+
+/** A tiny presentational block for the “Core / Accessories / Popular / On sale” rows */
+function Section({
+  title,
+  openText,
+  moreText,
+  href,
+}: {
+  title: string;
+  openText: string;
+  moreText: string;
+  href: string;
+}) {
+  return (
+    <section>
+      <h3 className="text-lg font-semibold text-slate-900 mb-2">{title}</h3>
+      <div className="flex flex-wrap gap-2">
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 rounded-full border border-cyan-300/50 bg-cyan-50 px-3 py-1.5 text-cyan-700 hover:bg-cyan-100 transition"
+        >
+          {openText}
+          <span aria-hidden>↗</span>
+        </a>
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 transition"
+        >
+          {moreText}
+          <span className="text-slate-400" aria-hidden>
+            →
+          </span>
+        </a>
+      </div>
+    </section>
   );
 }

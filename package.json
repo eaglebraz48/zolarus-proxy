@@ -15,6 +15,7 @@
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/supabase-js": "^2.58.0",
     "aws4": "^1.13.2",
+    "clsx": "^2.1.1",
     "next": "15.5.4",
     "node-fetch": "^3.3.2",
     "paapi5-nodejs-sdk": "^1.1.0",
@@ -26,13 +27,13 @@
   "devDependencies": {
     "@netlify/functions": "^5.0.0",
     "@netlify/plugin-nextjs": "^5.8.1",
-    "@tailwindcss/postcss": "^4.1.13",
+    "@tailwindcss/forms": "^0.5.10",
     "@types/node": "20.12.12",
     "@types/react": "18.3.3",
     "autoprefixer": "^10.4.21",
     "eslint": "9.9.0",
     "eslint-config-next": "15.5.4",
     "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.1"
+    "tailwindcss": "^3.4.13"
   }
 }
